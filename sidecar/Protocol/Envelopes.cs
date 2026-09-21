@@ -67,3 +67,8 @@ internal sealed record CaptureDto(
     ForegroundWindowDto Foreground);
 
 internal sealed record PingDto(int ProtocolVersion, string SidecarVersion, int ProcessId);
+
+/// <summary>One recognised line, in full-image pixels.</summary>
+internal sealed record OcrLineDto(string Text, double Confidence, RectDto Bounds);
+
+internal sealed record OcrResultDto(IReadOnlyList<OcrLineDto> Lines, string Language);

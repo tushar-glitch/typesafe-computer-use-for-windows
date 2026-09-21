@@ -2,7 +2,9 @@
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFramework>net8.0-windows</TargetFramework>
+    <!-- The Windows 10 SDK projection: required for Windows.Media.Ocr. -->
+    <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
+    <SupportedOSPlatformVersion>10.0.17763.0</SupportedOSPlatformVersion>
     <AssemblyName>jev-sidecar</AssemblyName>
     <RootNamespace>JevSidecar</RootNamespace>
     <Nullable>enable</Nullable>

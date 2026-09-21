@@ -39,6 +39,28 @@ export interface CaptureDto {
   readonly foreground: ForegroundWindowDto;
 }
 
+export interface OcrLineDto {
+  readonly text: string;
+  /**
+   * Always 1.0 from Windows OCR, which reports no per-word confidence.
+   * Preserved so another engine can supply a real value.
+   */
+  readonly confidence: number;
+  readonly bounds: RectDto;
+}
+
+export interface OcrResultDto {
+  readonly lines: readonly OcrLineDto[];
+  /** BCP-47 tag of the recogniser that ran, e.g. "en-US". */
+  readonly language: string;
+}
+
+export interface OcrParams {
+  readonly imageBase64: string;
+  /** Restricts recognition to one rectangle of the image. */
+  readonly region?: RectDto;
+}
+
 export interface PingDto {
   readonly protocolVersion: number;
   readonly sidecarVersion: string;
@@ -57,6 +79,7 @@ export interface SidecarCommands {
   readonly ping: { readonly params: EmptyParams; readonly result: PingDto };
   readonly foreground: { readonly params: EmptyParams; readonly result: ForegroundWindowDto };
   readonly capture: { readonly params: { readonly target: CaptureTarget }; readonly result: CaptureDto };
+  readonly ocr: { readonly params: OcrParams; readonly result: OcrResultDto };
 }
 
 export type SidecarCommandName = keyof SidecarCommands & string;

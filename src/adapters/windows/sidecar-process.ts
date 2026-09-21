@@ -12,7 +12,7 @@ import { SidecarClient, type SidecarClientOptions } from "./sidecar-client.js";
 import { ChildProcessTransport } from "./transport.js";
 
 const EXECUTABLE_NAME = "jev-sidecar.exe";
-const TARGET_FRAMEWORK = "net8.0-windows";
+const TARGET_FRAMEWORK = "net8.0-windows10.0.19041.0";
 
 /** Repository root, derived from this module rather than the working directory. */
 function projectRoot(): string {

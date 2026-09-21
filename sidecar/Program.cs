@@ -26,6 +26,20 @@ internal static class Program
         using StreamWriter stdout = new(Console.OpenStandardOutput(), new UTF8Encoding(false)) { AutoFlush = true };
 
         Dictionary<string, ICommandHandler> handlers = BuildHandlers();
+        // Off the hot path: the OCR engine builds while the client is still
+        // connecting, so the first capture does not pay for it.
+        _ = Task.Run(static () =>
+        {
+            try
+            {
+                TextRecognizer.Warmup();
+            }
+            catch (Exception error)
+            {
+                Console.Error.WriteLine($"OCR warmup failed, first request will pay for it: {error.Message}");
+            }
+        });
+
         Console.Error.WriteLine($"jev-sidecar ready; commands: {string.Join(", ", handlers.Keys.Order())}");
 
         string? line;
@@ -50,6 +64,7 @@ internal static class Program
             new PingCommand(),
             new ForegroundCommand(),
             new CaptureCommand(),
+            new OcrCommand(),
         ];
         return handlers.ToDictionary(handler => handler.Name, StringComparer.Ordinal);
     }
