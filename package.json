@@ -1,0 +1,28 @@
+{
+  "name": "jev-voice-windows",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Voice-driven Windows automation: streaming speech, Jev decisions, UIA/OCR perception.",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint .",
+    "format": "prettier --write ."
+  },
+  "devDependencies": {
+    "@types/node": "24.10.1",
+    "typescript": "5.9.3",
+    "vitest": "3.2.4",
+    "tsx": "4.20.6"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
+  }
+}
