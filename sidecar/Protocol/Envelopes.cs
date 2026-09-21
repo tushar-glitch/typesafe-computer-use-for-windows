@@ -72,3 +72,31 @@ internal sealed record PingDto(int ProtocolVersion, string SidecarVersion, int P
 internal sealed record OcrLineDto(string Text, double Confidence, RectDto Bounds);
 
 internal sealed record OcrResultDto(IReadOnlyList<OcrLineDto> Lines, string Language);
+
+/// <summary>One actionable control from the UI Automation tree, in physical pixels.</summary>
+internal sealed record UiaElementDto(
+    string Role,
+    string Label,
+    RectDto Bounds,
+    bool Invokable,
+    string Handle);
+
+internal sealed record FocusedFieldDto(
+    string Role,
+    string Label,
+    string Placeholder,
+    string Value,
+    RectDto Bounds,
+    string? Handle,
+    bool IsEditable);
+
+internal sealed record UiaTreeDto(
+    IReadOnlyList<UiaElementDto> Onscreen,
+    IReadOnlyList<UiaElementDto> Offscreen,
+    FocusedFieldDto? FocusedField,
+    bool Truncated,
+    int Examined,
+    int Skipped,
+    double FetchMs,
+    double ClassifyMs,
+    double ElapsedMs);

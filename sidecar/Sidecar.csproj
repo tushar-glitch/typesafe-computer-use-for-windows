@@ -11,6 +11,8 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <!-- System.Drawing for the capture path. -->
     <UseWindowsForms>true</UseWindowsForms>
+    <!-- Brings UIAutomationClient/UIAutomationTypes for the accessibility walk. -->
+    <UseWPF>true</UseWPF>
     <InvariantGlobalization>true</InvariantGlobalization>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>

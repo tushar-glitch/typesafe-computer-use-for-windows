@@ -1,3 +1,4 @@
+using System.IO;
 using System.Text;
 using System.Text.Json;
 using JevSidecar.Commands;
@@ -59,12 +60,17 @@ internal static class Program
 
     private static Dictionary<string, ICommandHandler> BuildHandlers()
     {
+        // Shared across commands so a handle from uia_tree still resolves when
+        // a later command acts on it.
+        ElementRegistry registry = new();
+
         ICommandHandler[] handlers =
         [
             new PingCommand(),
             new ForegroundCommand(),
             new CaptureCommand(),
             new OcrCommand(),
+            new UiaTreeCommand(registry),
         ];
         return handlers.ToDictionary(handler => handler.Name, StringComparer.Ordinal);
     }
