@@ -61,6 +61,43 @@ export interface OcrParams {
   readonly region?: RectDto;
 }
 
+export interface UiaElementDto {
+  /** Already normalised to one word by the sidecar; unknown values map to "other". */
+  readonly role: string;
+  readonly label: string;
+  readonly bounds: RectDto;
+  readonly invokable: boolean;
+  /** Opaque handle to the live element, resolvable by the sidecar for a later action. */
+  readonly handle: string;
+}
+
+export interface FocusedFieldDto {
+  readonly role: string;
+  readonly label: string;
+  readonly placeholder: string;
+  readonly value: string;
+  readonly bounds: RectDto;
+  readonly handle: string | null;
+  readonly isEditable: boolean;
+}
+
+export interface UiaTreeDto {
+  readonly onscreen: readonly UiaElementDto[];
+  readonly offscreen: readonly UiaElementDto[];
+  readonly focusedField: FocusedFieldDto | null;
+  readonly truncated: boolean;
+  readonly examined: number;
+  readonly skipped: number;
+  readonly fetchMs: number;
+  readonly classifyMs: number;
+  readonly elapsedMs: number;
+}
+
+export interface UiaTreeParams {
+  /** Wall-clock ceiling for the walk, in milliseconds. */
+  readonly budgetMs?: number;
+}
+
 export interface PingDto {
   readonly protocolVersion: number;
   readonly sidecarVersion: string;
@@ -80,6 +117,7 @@ export interface SidecarCommands {
   readonly foreground: { readonly params: EmptyParams; readonly result: ForegroundWindowDto };
   readonly capture: { readonly params: { readonly target: CaptureTarget }; readonly result: CaptureDto };
   readonly ocr: { readonly params: OcrParams; readonly result: OcrResultDto };
+  readonly uia_tree: { readonly params: UiaTreeParams; readonly result: UiaTreeDto };
 }
 
 export type SidecarCommandName = keyof SidecarCommands & string;

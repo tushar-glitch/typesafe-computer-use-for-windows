@@ -7,10 +7,24 @@
  */
 
 import type { Rect } from "../../core/types/geometry.js";
-import type { ForegroundWindow, ScreenImage } from "../../core/types/observation.js";
-import { confidence, type Confidence } from "../../core/types/scalars.js";
-import type { OcrLine } from "../../core/ports/perception.js";
-import type { CaptureDto, ForegroundWindowDto, OcrLineDto, RectDto } from "./protocol.js";
+import type {
+  ElementHandle,
+  FocusedField,
+  ForegroundWindow,
+  ScreenImage,
+  UiRole,
+} from "../../core/types/observation.js";
+import { confidence, milliseconds, type Confidence } from "../../core/types/scalars.js";
+import type { AccessibilityElement, AccessibilitySnapshot, OcrLine } from "../../core/ports/perception.js";
+import type {
+  CaptureDto,
+  FocusedFieldDto,
+  ForegroundWindowDto,
+  OcrLineDto,
+  RectDto,
+  UiaElementDto,
+  UiaTreeDto,
+} from "./protocol.js";
 
 export function toRect(dto: RectDto): Rect {
   return { x: dto.x, y: dto.y, width: dto.width, height: dto.height };
@@ -53,4 +67,64 @@ export function toOcrLine(dto: OcrLineDto): OcrLine {
 
 export function toBase64(data: Uint8Array): string {
   return Buffer.from(data).toString("base64");
+}
+
+/**
+ * Roles the sidecar is allowed to report.
+ *
+ * The wire carries a plain string, so it is validated here rather than
+ * asserted: a sidecar built from newer sources must not be able to smuggle an
+ * unknown role into a typed union the rest of the code switches over.
+ */
+const KNOWN_ROLES: ReadonlySet<string> = new Set<UiRole>([
+  "button",
+  "link",
+  "field",
+  "checkbox",
+  "radio",
+  "tab",
+  "menu",
+  "list item",
+  "cell",
+  "image",
+  "slider",
+  "combo",
+  "other",
+]);
+
+export function toUiRole(value: string): UiRole {
+  return KNOWN_ROLES.has(value) ? (value as UiRole) : "other";
+}
+
+export function toAccessibilityElement(dto: UiaElementDto): AccessibilityElement {
+  return {
+    role: toUiRole(dto.role),
+    label: dto.label,
+    bounds: toRect(dto.bounds),
+    invokable: dto.invokable,
+    handle: dto.handle as ElementHandle,
+  };
+}
+
+export function toFocusedField(dto: FocusedFieldDto): FocusedField {
+  return {
+    role: toUiRole(dto.role),
+    label: dto.label,
+    placeholder: dto.placeholder,
+    value: dto.value,
+    bounds: toRect(dto.bounds),
+    element: dto.handle === null ? null : (dto.handle as ElementHandle),
+    isEditable: dto.isEditable,
+  };
+}
+
+export function toAccessibilitySnapshot(dto: UiaTreeDto): AccessibilitySnapshot {
+  return {
+    onscreen: dto.onscreen.map(toAccessibilityElement),
+    offscreen: dto.offscreen.map(toAccessibilityElement),
+    focusedField: dto.focusedField === null ? null : toFocusedField(dto.focusedField),
+    truncated: dto.truncated,
+    examined: dto.examined,
+    elapsed: milliseconds(Math.max(0, dto.elapsedMs)),
+  };
 }

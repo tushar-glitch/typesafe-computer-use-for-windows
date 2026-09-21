@@ -17,7 +17,7 @@ import type {
   ScreenImage,
   UiRole,
 } from "../types/observation.js";
-import type { Confidence } from "../types/scalars.js";
+import type { Confidence, Milliseconds } from "../types/scalars.js";
 
 /**
  * What to photograph.
@@ -65,12 +65,32 @@ export interface AccessibilitySnapshot {
   /** Labelled, invokable elements the app exposes but does not render. */
   readonly offscreen: readonly AccessibilityElement[];
   readonly focusedField: FocusedField | null;
-  /** True when the walk hit its node or time budget and stopped early. */
+  /**
+   * True when the walk hit its node or time budget and stopped early.
+   *
+   * Expected rather than exceptional: a full tree is unaffordable on a real
+   * application, so the walk is bounded and returns what it reached. Callers
+   * must treat the result as a useful sample, never as the complete UI.
+   */
   readonly truncated: boolean;
+  /** Nodes visited. Diagnostic, for tuning the budget against real windows. */
+  readonly examined: number;
+  readonly elapsed: Milliseconds;
 }
 
+export interface AccessibilityOptions {
+  /** Wall-clock ceiling for the walk. Past it, the provider returns what it has. */
+  readonly budgetMs?: number;
+}
+
+/**
+ * Reads the accessibility tree of whatever window is in front.
+ *
+ * Scoped to the foreground window by design: it is the only one the user can
+ * act on, and walking more would cost time the step budget does not have.
+ */
 export interface IAccessibilityProvider {
-  snapshot(processId: number, signal?: AbortSignal): Promise<AccessibilitySnapshot>;
+  snapshot(options?: AccessibilityOptions, signal?: AbortSignal): Promise<AccessibilitySnapshot>;
 }
 
 /** Reads the active tab URL from a supported browser. Separate because only browsers have one. */
