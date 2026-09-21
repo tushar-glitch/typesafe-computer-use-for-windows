@@ -6,5 +6,6 @@ export default defineConfig({
     // Integration specs drive a real child process and a real screen grab.
     testTimeout: 30_000,
     environment: "node",
+    setupFiles: ["tests/setup-env.ts"],
   },
 });

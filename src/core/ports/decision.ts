@@ -29,38 +29,73 @@ export interface BooleanQuestion {
   readonly instructions: string;
 }
 
-export interface ScoreQuestion {
+/**
+ * A graded judgement against an ordered rubric.
+ *
+ * Levels rather than a numeric range: the model is told what each grade means
+ * and answers with an expected value across them, which may land between two
+ * levels. A bare minimum and maximum would give it nothing to anchor on.
+ */
+export interface ScoreQuestion<R extends readonly string[] = readonly string[]> {
   readonly type: "score";
   readonly instructions: string;
-  readonly minimum: number;
-  readonly maximum: number;
+  /** Descriptions ordered from lowest grade to highest. At least two. */
+  readonly rubric: R;
 }
 
-export type AnyQuestion = ChoiceQuestion<string> | BooleanQuestion | ScoreQuestion;
+export type AnyQuestion = ChoiceQuestion<string> | BooleanQuestion | ScoreQuestion<readonly string[]>;
 
 export type QuestionSet = Readonly<Record<string, AnyQuestion>>;
 
 export interface ChoiceAnswer<K extends string = string> {
   readonly choice: K;
-  /** How concentrated the distribution is, not the winning probability. */
+  /**
+   * The model's calibrated confidence in the selected label.
+   *
+   * Measured against live Jev, it tracks how debatable the judgement is and
+   * usually sits at or below the winning probability: 1.0 for an obvious
+   * choice, 0.63 for a genuine toss-up between two sensible options, 0.49 when
+   * neither option was any good.
+   *
+   * One thing it is NOT, verified rather than assumed: it does not detect
+   * overlapping options. Two options described identically produced 0.92 /
+   * 0.08 at confidence 0.85, the tie broken arbitrarily and reported as
+   * near-certain. Options must still be kept mutually exclusive, but because
+   * duplicates make behaviour erratic between steps, not because confidence
+   * gating will catch them.
+   *
+   * Separately, every choice needs an explicit escape option. Asked which of
+   * several irrelevant controls serves a goal, the model must still name one.
+   * Offered "nothing helps", it says so.
+   */
   readonly confidence: Confidence;
   readonly probabilities: Readonly<Record<K, number>>;
 }
 
+/**
+ * A calibrated yes/no.
+ *
+ * The provider answers with a probability, not a verdict. `value` is that
+ * probability thresholded at one half, and is a convenience only: anything
+ * gating on this answer should read `probability` and pick its own cut-off,
+ * because the right threshold depends on what acting wrongly costs.
+ */
 export interface BooleanAnswer {
   readonly value: boolean;
   readonly probability: Confidence;
 }
 
 export interface ScoreAnswer {
+  /** Expected grade, which may fall between two rubric levels. */
   readonly value: number;
   readonly confidence: Confidence;
+  readonly probabilities: Readonly<Record<string, number>>;
 }
 
 export type AnswerFor<Q> =
   Q extends ChoiceQuestion<infer K> ? ChoiceAnswer<K>
   : Q extends BooleanQuestion ? BooleanAnswer
-  : Q extends ScoreQuestion ? ScoreAnswer
+  : Q extends ScoreQuestion<readonly string[]> ? ScoreAnswer
   : never;
 
 export type DecisionAnswers<Q extends QuestionSet> = { readonly [K in keyof Q]: AnswerFor<Q[K]> };
@@ -91,8 +126,8 @@ export function booleanQuestion(instructions: string): BooleanQuestion {
   return { type: "boolean", instructions };
 }
 
-export function scoreQuestion(instructions: string, minimum: number, maximum: number): ScoreQuestion {
-  return { type: "score", instructions, minimum, maximum };
+export function scoreQuestion<const R extends readonly string[]>(instructions: string, rubric: R): ScoreQuestion<R> {
+  return { type: "score", instructions, rubric };
 }
 
 /** The n most probable options, most probable first. Used for logging and gating. */
