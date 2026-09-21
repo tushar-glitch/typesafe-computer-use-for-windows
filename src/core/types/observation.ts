@@ -1,6 +1,6 @@
 /** What one glance at the screen yields, after OCR and the UIA tree are merged. */
 
-import type { Rect, Size } from "./geometry.js";
+import type { Point, Rect, Size } from "./geometry.js";
 import type { Confidence, Milliseconds } from "./scalars.js";
 
 /** Where an item came from. `uia+ocr` means both sources agreed on the same thing. */
@@ -79,6 +79,15 @@ export interface ScreenImage {
   readonly data: Uint8Array;
   readonly format: "png";
   readonly size: Size;
+  /**
+   * Screen coordinate of image pixel (0,0).
+   *
+   * Not always the origin. A capture spanning every monitor starts at the
+   * top-left of the virtual desktop, which is negative when a display sits
+   * above or left of the primary one. Anything turning a pixel into a place
+   * the mouse can go must account for it.
+   */
+  readonly origin: Point;
 }
 
 /** The foreground window at capture time. */

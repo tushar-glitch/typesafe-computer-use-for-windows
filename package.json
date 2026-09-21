@@ -13,7 +13,8 @@
     "test:watch": "vitest",
     "lint": "eslint .",
     "format": "prettier --write .",
-    "demo:fast-path": "tsx src/cli/fast-path-demo.ts"
+    "demo:fast-path": "tsx src/cli/fast-path-demo.ts",
+    "demo:observe": "tsx src/cli/observe-demo.ts"
   },
   "devDependencies": {
     "@types/node": "24.10.1",

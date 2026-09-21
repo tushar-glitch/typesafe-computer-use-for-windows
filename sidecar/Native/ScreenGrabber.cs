@@ -45,6 +45,12 @@ internal static class ScreenGrabber
             ImageBase64: Convert.ToBase64String(buffer.ToArray()),
             Width: bitmap.Width,
             Height: bitmap.Height,
+            // Where this image sits on the desktop. Image pixel (0,0) is this
+            // screen coordinate, which is negative for a monitor placed above
+            // or left of the primary one. Without it nothing can turn a pixel
+            // found by OCR back into somewhere the mouse can be sent.
+            OriginX: region.Left,
+            OriginY: region.Top,
             DisplayScale: DisplayScale(),
             Foreground: foreground);
     }

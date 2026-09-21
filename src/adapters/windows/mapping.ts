@@ -48,6 +48,7 @@ export function toScreenImage(dto: CaptureDto): ScreenImage {
     data: Uint8Array.from(Buffer.from(dto.imageBase64, "base64")),
     format: "png",
     size: { width: dto.width, height: dto.height },
+    origin: { x: dto.originX, y: dto.originY },
   };
 }
 

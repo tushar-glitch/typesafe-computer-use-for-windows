@@ -34,6 +34,9 @@ export interface CaptureDto {
   readonly imageBase64: string;
   readonly width: number;
   readonly height: number;
+  /** Screen coordinate of image pixel (0,0); negative for a monitor above or left of the primary. */
+  readonly originX: number;
+  readonly originY: number;
   /** Captured pixels per logical screen point. */
   readonly displayScale: number;
   readonly foreground: ForegroundWindowDto;

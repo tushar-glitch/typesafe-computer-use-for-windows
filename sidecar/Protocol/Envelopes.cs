@@ -63,6 +63,9 @@ internal sealed record CaptureDto(
     string ImageBase64,
     int Width,
     int Height,
+    /// <summary>Screen coordinate of image pixel (0,0). Negative when a monitor sits above or left of the primary.</summary>
+    double OriginX,
+    double OriginY,
     double DisplayScale,
     ForegroundWindowDto Foreground);
 

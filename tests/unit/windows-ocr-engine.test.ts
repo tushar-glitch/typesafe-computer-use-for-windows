@@ -8,6 +8,7 @@ const image: ScreenImage = {
   data: Uint8Array.from([1, 2, 3, 4]),
   format: "png",
   size: { width: 100, height: 50 },
+  origin: { x: 0, y: 0 },
 };
 
 function harness(): { engine: WindowsOcrEngine; transport: FakeTransport } {
