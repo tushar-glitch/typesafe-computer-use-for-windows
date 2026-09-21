@@ -14,7 +14,8 @@
     "lint": "eslint .",
     "format": "prettier --write .",
     "demo:fast-path": "tsx src/cli/fast-path-demo.ts",
-    "demo:observe": "tsx src/cli/observe-demo.ts"
+    "demo:observe": "tsx src/cli/observe-demo.ts",
+    "demo:agent": "tsx --env-file=.env src/cli/agent-demo.ts"
   },
   "devDependencies": {
     "@types/node": "24.10.1",
