@@ -1,4 +1,4 @@
-using System.Windows.Automation;
+using Interop.UIAutomationClient;
 
 namespace JevSidecar.Native;
 
@@ -7,34 +7,34 @@ namespace JevSidecar.Native;
 ///
 /// The model compares options as text, so "button" must mean the same thing in
 /// every app. Anything unmapped becomes "other" rather than leaking a raw
-/// control-type name into the criteria.
+/// control-type id into the criteria.
 /// </summary>
 internal static class RoleMap
 {
     private static readonly Dictionary<int, string> ByControlTypeId = new()
     {
-        [ControlType.Button.Id] = "button",
-        [ControlType.SplitButton.Id] = "button",
-        [ControlType.Hyperlink.Id] = "link",
-        [ControlType.Edit.Id] = "field",
-        [ControlType.Document.Id] = "field",
-        [ControlType.CheckBox.Id] = "checkbox",
-        [ControlType.RadioButton.Id] = "radio",
-        [ControlType.TabItem.Id] = "tab",
-        [ControlType.MenuItem.Id] = "menu",
-        [ControlType.ListItem.Id] = "list item",
-        [ControlType.TreeItem.Id] = "list item",
-        [ControlType.DataItem.Id] = "cell",
-        [ControlType.Image.Id] = "image",
-        [ControlType.Slider.Id] = "slider",
-        [ControlType.ComboBox.Id] = "combo",
+        [UIA_ControlTypeIds.UIA_ButtonControlTypeId] = "button",
+        [UIA_ControlTypeIds.UIA_SplitButtonControlTypeId] = "button",
+        [UIA_ControlTypeIds.UIA_HyperlinkControlTypeId] = "link",
+        [UIA_ControlTypeIds.UIA_EditControlTypeId] = "field",
+        [UIA_ControlTypeIds.UIA_DocumentControlTypeId] = "field",
+        [UIA_ControlTypeIds.UIA_CheckBoxControlTypeId] = "checkbox",
+        [UIA_ControlTypeIds.UIA_RadioButtonControlTypeId] = "radio",
+        [UIA_ControlTypeIds.UIA_TabItemControlTypeId] = "tab",
+        [UIA_ControlTypeIds.UIA_MenuItemControlTypeId] = "menu",
+        [UIA_ControlTypeIds.UIA_ListItemControlTypeId] = "list item",
+        [UIA_ControlTypeIds.UIA_TreeItemControlTypeId] = "list item",
+        [UIA_ControlTypeIds.UIA_DataItemControlTypeId] = "cell",
+        [UIA_ControlTypeIds.UIA_ImageControlTypeId] = "image",
+        [UIA_ControlTypeIds.UIA_SliderControlTypeId] = "slider",
+        [UIA_ControlTypeIds.UIA_ComboBoxControlTypeId] = "combo",
     };
 
     /// <summary>Roles whose contents the user types into.</summary>
     private static readonly HashSet<string> EditableRoles = ["field", "combo"];
 
-    public static string For(ControlType? controlType) =>
-        controlType is not null && ByControlTypeId.TryGetValue(controlType.Id, out string? word) ? word : "other";
+    public static string For(int controlTypeId) =>
+        ByControlTypeId.TryGetValue(controlTypeId, out string? word) ? word : "other";
 
     public static bool IsEditable(string role) => EditableRoles.Contains(role);
 }

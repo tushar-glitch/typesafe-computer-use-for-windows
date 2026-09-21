@@ -11,13 +11,15 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <!-- System.Drawing for the capture path. -->
     <UseWindowsForms>true</UseWindowsForms>
-    <!-- Brings UIAutomationClient/UIAutomationTypes for the accessibility walk. -->
-    <UseWPF>true</UseWPF>
     <InvariantGlobalization>true</InvariantGlobalization>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
     <!-- DllImport is clearer here than source-generated LibraryImport for this handful of calls. -->
     <NoWarn>$(NoWarn);SYSLIB1054</NoWarn>
   </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Interop.UIAutomationClient" Version="10.19041.0" />
+  </ItemGroup>
 
 </Project>

@@ -1,4 +1,4 @@
-using System.Windows.Automation;
+using Interop.UIAutomationClient;
 
 namespace JevSidecar.Native;
 
@@ -15,7 +15,7 @@ internal sealed class ElementRegistry
 {
     private const int RetainedGenerations = 2;
 
-    private readonly Dictionary<long, Dictionary<string, AutomationElement>> _generations = [];
+    private readonly Dictionary<long, Dictionary<string, IUIAutomationElement>> _generations = [];
     private long _generation;
     private long _counter;
 
@@ -33,7 +33,7 @@ internal sealed class ElementRegistry
         return _generation;
     }
 
-    public string Add(AutomationElement element)
+    public string Add(IUIAutomationElement element)
     {
         string handle = $"e{++_counter}";
         _generations[_generation][handle] = element;
@@ -41,11 +41,11 @@ internal sealed class ElementRegistry
     }
 
     /// <summary>The element behind a handle, or null once its generation has been retired.</summary>
-    public AutomationElement? Resolve(string handle)
+    public IUIAutomationElement? Resolve(string handle)
     {
-        foreach (Dictionary<string, AutomationElement> generation in _generations.Values)
+        foreach (Dictionary<string, IUIAutomationElement> generation in _generations.Values)
         {
-            if (generation.TryGetValue(handle, out AutomationElement? element))
+            if (generation.TryGetValue(handle, out IUIAutomationElement? element))
             {
                 return element;
             }

@@ -15,15 +15,13 @@ namespace JevSidecar.Native;
 /// </summary>
 internal static class ScreenGrabber
 {
-    private const int SmCxScreen = 0;
-    private const int SmCyScreen = 1;
-
     public static CaptureDto Capture(string target)
     {
         ForegroundWindowDto foreground = WindowProbe.Foreground();
         Rectangle region = target switch
         {
             "primary-display" => PrimaryDisplay(),
+            "virtual-screen" => VirtualScreen(),
             "foreground-window" => ForegroundRegion(),
             _ => throw new SidecarCommandException("unknown-target", $"unknown capture target '{target}'"),
         };
@@ -51,17 +49,26 @@ internal static class ScreenGrabber
             Foreground: foreground);
     }
 
-    private static Rectangle PrimaryDisplay() =>
-        new(0, 0, NativeMethods.GetSystemMetrics(SmCxScreen), NativeMethods.GetSystemMetrics(SmCyScreen));
+    private static Rectangle PrimaryDisplay() => ToRectangle(NativeMethods.PrimaryScreen());
+
+    /// <summary>Every monitor as one rectangle. Its origin is negative when a display sits above or left of the primary.</summary>
+    private static Rectangle VirtualScreen() => ToRectangle(NativeMethods.VirtualScreen());
 
     private static Rectangle ForegroundRegion()
     {
         IntPtr window = NativeMethods.GetForegroundWindow();
         NativeMethods.Rect frame = WindowProbe.FrameBounds(window);
+
+        // Clamped to the virtual screen, not the primary display: a window on a
+        // secondary monitor lies wholly outside the primary rectangle, and
+        // intersecting with it would yield an empty capture.
         return Rectangle.Intersect(
             new Rectangle(frame.Left, frame.Top, frame.Width, frame.Height),
-            PrimaryDisplay());
+            VirtualScreen());
     }
+
+    private static Rectangle ToRectangle(NativeMethods.Rect rect) =>
+        new(rect.Left, rect.Top, rect.Width, rect.Height);
 
     /// <summary>
     /// Captured pixels per logical point.

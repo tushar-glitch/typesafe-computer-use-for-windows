@@ -19,7 +19,14 @@ import type {
 } from "../types/observation.js";
 import type { Confidence } from "../types/scalars.js";
 
-export type CaptureTarget = "primary-display" | "foreground-window";
+/**
+ * What to photograph.
+ *
+ * "virtual-screen" spans every monitor and is the only correct choice on a
+ * multi-display machine, where a window can sit at negative coordinates
+ * entirely outside the primary display.
+ */
+export type CaptureTarget = "primary-display" | "virtual-screen" | "foreground-window";
 
 export interface ScreenCapture {
   readonly image: ScreenImage;
