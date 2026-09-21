@@ -64,7 +64,7 @@ internal static class Program
         // a later command acts on it.
         ElementRegistry registry = new();
 
-        ICommandHandler[] handlers =
+        List<ICommandHandler> handlers =
         [
             new PingCommand(),
             new ForegroundCommand(),
@@ -72,6 +72,10 @@ internal static class Program
             new OcrCommand(),
             new UiaTreeCommand(registry),
         ];
+        handlers.AddRange(InputCommands.All());
+        handlers.AddRange(ElementCommands.All(registry));
+        handlers.AddRange(AppCommands.All());
+
         return handlers.ToDictionary(handler => handler.Name, StringComparer.Ordinal);
     }
 

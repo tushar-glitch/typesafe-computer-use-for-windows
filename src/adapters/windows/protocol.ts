@@ -98,6 +98,38 @@ export interface UiaTreeParams {
   readonly budgetMs?: number;
 }
 
+/** Acknowledgement for an action with nothing to report but success. */
+export interface ActionAckDto {
+  readonly ok: boolean;
+}
+
+/**
+ * Whether a control accepted an accessibility action.
+ *
+ * False is an ordinary outcome, not a failure: controls advertise patterns and
+ * then decline them, and the caller falls back to a synthetic click.
+ */
+export interface ElementActionDto {
+  readonly accepted: boolean;
+}
+
+export interface ElementValueDto {
+  readonly value: string | null;
+}
+
+export interface LaunchDto {
+  readonly started: boolean;
+}
+
+export interface ActivateDto {
+  readonly activated: boolean;
+}
+
+export interface PointParams {
+  readonly x: number;
+  readonly y: number;
+}
+
 export interface PingDto {
   readonly protocolVersion: number;
   readonly sidecarVersion: string;
@@ -118,6 +150,25 @@ export interface SidecarCommands {
   readonly capture: { readonly params: { readonly target: CaptureTarget }; readonly result: CaptureDto };
   readonly ocr: { readonly params: OcrParams; readonly result: OcrResultDto };
   readonly uia_tree: { readonly params: UiaTreeParams; readonly result: UiaTreeDto };
+
+  readonly input_click: { readonly params: PointParams; readonly result: ActionAckDto };
+  readonly input_move: { readonly params: PointParams; readonly result: ActionAckDto };
+  readonly input_type: { readonly params: { readonly text: string }; readonly result: ActionAckDto };
+  readonly input_key: { readonly params: { readonly key: string }; readonly result: ActionAckDto };
+  readonly input_scroll: { readonly params: { readonly notches: number }; readonly result: ActionAckDto };
+  readonly input_clear_field: { readonly params: EmptyParams; readonly result: ActionAckDto };
+
+  readonly element_invoke: { readonly params: { readonly handle: string }; readonly result: ElementActionDto };
+  readonly element_set_value: {
+    readonly params: { readonly handle: string; readonly text: string };
+    readonly result: ElementActionDto;
+  };
+  readonly element_focus: { readonly params: { readonly handle: string }; readonly result: ElementActionDto };
+  readonly element_read_value: { readonly params: { readonly handle: string }; readonly result: ElementValueDto };
+
+  readonly launch_app: { readonly params: { readonly appId: string }; readonly result: LaunchDto };
+  readonly open_url: { readonly params: { readonly url: string }; readonly result: LaunchDto };
+  readonly activate_app: { readonly params: { readonly processName: string }; readonly result: ActivateDto };
 }
 
 export type SidecarCommandName = keyof SidecarCommands & string;

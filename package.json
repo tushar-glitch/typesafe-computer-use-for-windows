@@ -12,7 +12,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "eslint .",
-    "format": "prettier --write ."
+    "format": "prettier --write .",
+    "demo:fast-path": "tsx src/cli/fast-path-demo.ts"
   },
   "devDependencies": {
     "@types/node": "24.10.1",
