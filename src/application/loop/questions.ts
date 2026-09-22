@@ -31,15 +31,35 @@ import type { JsonObject, JsonValue } from "../../core/types/json.js";
 import { center } from "../../core/types/geometry.js";
 import type { Observation, UiItem } from "../../core/types/observation.js";
 import { confidence, weakest, type Confidence } from "../../core/types/scalars.js";
+import type { SessionSnapshot } from "../../core/types/session.js";
+import type { AppCatalog, SiteCatalog } from "../catalog/catalogs.js";
+import { afterPrefix, asDomain, stripFiller } from "../parsing/utterance.js";
 
 /**
- * The action set available inside the screen loop.
+ * The action set.
  *
- * Launching applications and opening URLs are absent deliberately: those are
- * the fast path, decided before the loop is ever entered. What remains is
- * everything that requires looking at the screen.
+ * Launching an application and opening a website are in here, alongside
+ * clicking and typing, and that placement is the whole design. They began as a
+ * router that ran before the loop and returned a verdict, which meant the goal
+ * died the moment one of them fired: "play a song on youtube" navigated to a
+ * results page, reported success, and never clicked anything, because nothing
+ * was left to carry the goal forward.
+ *
+ * Worse, a router has to commit on keywords. "Open chat gpt on a browser"
+ * matched the word "browser" against the application catalogue and launched
+ * Chrome, while chatgpt.com sat unconsidered in the site catalogue. Offered as
+ * options in one question, the model weighs them against each other instead.
+ *
+ * Multi-step requests then need no planning at all. Each step asks only what
+ * makes most progress now, and the sequence is the plan.
  */
 export const LOOP_ACTIONS = {
+  launch_app:
+    "Start or focus a desktop application, chosen in the app question. Use for anything that is a program "
+    + "rather than a website.",
+  open_url:
+    "Open a website in the browser, chosen in the site question. This is the only way to reach a website: "
+    + "never click the address bar or a search box to get there.",
   click_item: "Click one of the numbered items on screen, chosen in the item question.",
   type_text: "Type text into the focused text field. Only valid when a text field has focus and needs content.",
   press_enter: "Press Return to submit the focused form or field.",
@@ -48,7 +68,7 @@ export const LOOP_ACTIONS = {
   scroll_up: "Scroll up to reveal what is above.",
   wait: "Do nothing this step; the screen is still loading or changing.",
   done: "The goal is already achieved on this screen.",
-  none: "Nothing on this screen helps with the goal.",
+  none: "Nothing available helps with the goal.",
 } as const;
 
 /** Offered only when the application exposes controls it does not draw. */
@@ -57,8 +77,17 @@ const PRESS_OFFSCREEN =
   + "question. Use when the needed control is known to exist but is scrolled out of view.";
 
 const KIND_INSTRUCTIONS =
-  "You are driving this computer one action at a time. Which kind of action makes the most progress toward the "
-  + "goal right now? Do not repeat an action that was just taken unless the screen changed.";
+  "You are driving this computer one action at a time, working toward the goal. Which kind of action makes the "
+  + "most progress toward it right now? The goal may take several steps: opening a website is progress, not "
+  + "completion, and the goal is only done when what it asked for has actually happened. Do not repeat an "
+  + "action that was just taken unless the screen changed.";
+
+const APP_INSTRUCTIONS =
+  "If starting or focusing an application is the right move, which application?";
+
+const SITE_INSTRUCTIONS =
+  "If the browser is used this step, which website should it show? Name a site when the goal calls for it, and "
+  + "'stay' to continue with the page already open.";
 
 const ITEM_INSTRUCTIONS =
   "If clicking an on-screen item is the right move, which item? Items marked with a role are real controls the "
@@ -89,8 +118,27 @@ export function describeRegion(item: UiItem, observation: Observation): string {
   return `${row ?? "middle"}-${column ?? "centre"}`;
 }
 
+/** Everything the loop needs that is not the screen. */
+export interface LoopContext {
+  readonly apps: AppCatalog;
+  readonly sites: SiteCatalog;
+  /**
+   * What the session already knows.
+   *
+   * A task is not the first thing that has happened. "Open it again" and "ask
+   * him about that" only mean anything against what came before, and a session
+   * that runs for hours will be mostly follow-ups.
+   */
+  readonly session: SessionSnapshot;
+}
+
 /** The world as the model should see it. */
-export function buildState(goal: string, observation: Observation, history: readonly string[]): JsonObject {
+export function buildState(
+  goal: string,
+  observation: Observation,
+  history: readonly string[],
+  context: LoopContext,
+): JsonObject {
   const items: JsonValue[] = observation.items.map((item) => ({
     i: item.index,
     text: item.text,
@@ -126,18 +174,75 @@ export function buildState(goal: string, observation: Observation, history: read
             label: control.label,
           })),
         }),
+
+    // What the session has already done. Without it every sentence looks like
+    // the first thing ever said, and a follow-up cannot be understood as one.
+    ...(context.session.recentTasks.length === 0
+      ? {}
+      : {
+          earlier_in_this_session: context.session.recentTasks.slice(-SESSION_DEPTH).map((task) => ({
+            said: task.said,
+            result: task.result,
+            outcome: task.summary,
+          })),
+        }),
+    ...(context.session.referents.length === 0
+      ? {}
+      : { things_recently_opened: context.session.referents.map((referent) => referent.label) }),
   };
 }
 
-/** The questions for this screen. Item and offscreen appear only when they have options. */
-export function buildQuestions(observation: Observation): LoopQuestions {
+/** Recent tasks shown to the model. Enough for a follow-up to make sense. */
+const SESSION_DEPTH = 5;
+
+/** Option key meaning "do not navigate; carry on with the page already open". */
+export const STAY_ON_PAGE = "stay";
+
+/** Option key for an address the goal named out loud. */
+export const SPOKEN_SITE = "the site named in the goal";
+
+/**
+ * The part of a goal that might be an address.
+ *
+ * Whatever follows a navigation verb, so "open binance dot com" is examined
+ * but "search binance dot com for bitcoin" is not mistaken for a plain
+ * navigation.
+ */
+function spokenTarget(goal: string): string {
+  return afterPrefix(stripFiller(goal), ["open", "go to", "navigate to", "visit", "take me to"]) ?? goal;
+}
+
+/** The address a goal names out loud, or null. Used to resolve the spoken-site option. */
+export function spokenSiteUrl(goal: string): string | null {
+  const domain = asDomain(spokenTarget(goal));
+  if (domain === null) return null;
+  return domain.startsWith("http") ? domain : `https://${domain}`;
+}
+
+/** The questions for this step. A sub-question appears only when it has options. */
+export function buildQuestions(goal: string, observation: Observation, context: LoopContext): LoopQuestions {
   const kindCriteria: Record<string, string> = { ...LOOP_ACTIONS };
   if (observation.offscreen.length > 0) {
     kindCriteria["press_offscreen"] = PRESS_OFFSCREEN;
   }
 
+  const siteCriteria: Record<string, string> = {
+    ...context.sites.criteria(),
+    [STAY_ON_PAGE]: "Stay on the page already open in the browser; no navigation is needed.",
+  };
+
+  // An address the speaker actually said, offered alongside the catalogue.
+  // Without it, "open binance dot com" has no option that means what it says,
+  // and the model must pick something else or give up.
+  const spoken = asDomain(spokenTarget(goal));
+  if (spoken !== null) {
+    siteCriteria[SPOKEN_SITE] = `The website ${spoken}, which the goal names directly.`;
+  }
+
   const questions: Record<string, ChoiceQuestion<string>> = {
     kind: choiceQuestion(KIND_INSTRUCTIONS, kindCriteria),
+    app: choiceQuestion(APP_INSTRUCTIONS, context.apps.criteria()),
+    site: choiceQuestion(SITE_INSTRUCTIONS, siteCriteria),
   };
 
   if (observation.items.length > 0) {
@@ -171,6 +276,14 @@ export interface LoopDecision {
    * step can undo a scroll or a wait.
    */
   readonly confidence: Confidence;
+  /** How sure the model is that this KIND of action is right. */
+  readonly kindConfidence: Confidence;
+  /** The chosen kind probability, and the runner-up, for judging decisiveness. */
+  readonly kindLead: { readonly top: number; readonly runnerUp: number };
+  /** How sure it is WHICH target, when the action names one. */
+  readonly targetConfidence: Confidence | null;
+  /** The target distribution, for the same decisiveness check as the kind. */
+  readonly targetLead: { readonly top: number; readonly runnerUp: number } | null;
   readonly kind: string;
   readonly terminal: boolean;
 }
@@ -187,10 +300,57 @@ export class UnreadableDecisionError extends Error {}
 export function interpret(
   answers: Readonly<Record<string, unknown>>,
   observation: Observation,
+  context: LoopContext,
+  goal: string,
 ): LoopDecision {
   const kind = asChoice(answers["kind"], "kind");
 
   switch (kind.choice) {
+    case "launch_app": {
+      const app = asChoice(answers["app"], "app");
+      const entry = context.apps.byKey(app.choice);
+      if (entry === null) {
+        throw new UnreadableDecisionError(`app answer ${JSON.stringify(app.choice)} is not an application we know`);
+      }
+      return {
+        action: { kind: "launch_app", appId: entry.appId },
+        // Launching is reversible, so only the kind answer gates it. Being
+        // unsure WHICH application still beats refusing to act at all.
+        confidence: kind.confidence,
+        kindConfidence: kind.confidence,
+        kindLead: leadOf(kind),
+        targetConfidence: null,
+        targetLead: null,
+        kind: kind.choice,
+        terminal: false,
+      };
+    }
+
+    case "open_url": {
+      const site = asChoice(answers["site"], "site");
+
+      if (site.choice === STAY_ON_PAGE) {
+        // Navigation was chosen but no destination: nothing to do this step,
+        // and saying so beats reloading the page the user is already on.
+        return simple({ kind: "wait" }, kind);
+      }
+
+      const url = site.choice === SPOKEN_SITE ? spokenSiteUrl(goal) : (context.sites.byKey(site.choice)?.url ?? null);
+      if (url === null) {
+        throw new UnreadableDecisionError(`site answer ${JSON.stringify(site.choice)} names no website`);
+      }
+
+      return {
+        action: { kind: "open_url", url },
+        confidence: kind.confidence,
+        kindConfidence: kind.confidence,
+        kindLead: leadOf(kind),
+        targetConfidence: null,
+        targetLead: null,
+        kind: kind.choice,
+        terminal: false,
+      };
+    }
     case "click_item": {
       const item = asChoice(answers["item"], "item");
       const index = Number.parseInt(item.choice, 10);
@@ -200,6 +360,10 @@ export function interpret(
       return {
         action: { kind: "click_item", itemIndex: index },
         confidence: weakest(kind.confidence, item.confidence),
+        kindConfidence: kind.confidence,
+        kindLead: leadOf(kind),
+        targetConfidence: item.confidence,
+        targetLead: leadOf(item),
         kind: kind.choice,
         terminal: false,
       };
@@ -216,6 +380,10 @@ export function interpret(
       return {
         action: { kind: "press_offscreen", controlIndex: index },
         confidence: weakest(kind.confidence, offscreen.confidence),
+        kindConfidence: kind.confidence,
+        kindLead: leadOf(kind),
+        targetConfidence: offscreen.confidence,
+        targetLead: leadOf(offscreen),
         kind: kind.choice,
         terminal: false,
       };
@@ -243,10 +411,19 @@ export function interpret(
   }
 }
 
+function leadOf(answer: ChoiceAnswer<string>): { top: number; runnerUp: number } {
+  const sorted = Object.values(answer.probabilities).sort((a, b) => b - a);
+  return { top: sorted[0] ?? 0, runnerUp: sorted[1] ?? 0 };
+}
+
 function simple(action: AgentAction, kind: ChoiceAnswer<string>): LoopDecision {
   return {
     action,
     confidence: kind.confidence,
+    kindConfidence: kind.confidence,
+    kindLead: leadOf(kind),
+    targetConfidence: null,
+    targetLead: null,
     kind: kind.choice,
     terminal: TERMINAL.has(kind.choice),
   };
@@ -257,14 +434,22 @@ function asChoice(value: unknown, name: string): ChoiceAnswer<string> {
     throw new UnreadableDecisionError(`the ${name} question went unanswered`);
   }
 
-  const answer = value as { choice?: unknown; confidence?: unknown };
+  const answer = value as { choice?: unknown; confidence?: unknown; probabilities?: unknown };
   if (typeof answer.choice !== "string" || typeof answer.confidence !== "number") {
     throw new UnreadableDecisionError(`the ${name} answer is not a choice`);
   }
 
+  // Kept, not discarded. Confidence says how sure the model is of being right;
+  // the distribution says how far ahead the winner is, and those come apart
+  // whenever several different actions would each make progress.
+  const probabilities =
+    typeof answer.probabilities === "object" && answer.probabilities !== null
+      ? (answer.probabilities as Record<string, number>)
+      : {};
+
   return {
     choice: answer.choice,
     confidence: confidence(Math.min(1, Math.max(0, answer.confidence))),
-    probabilities: {},
+    probabilities,
   };
 }

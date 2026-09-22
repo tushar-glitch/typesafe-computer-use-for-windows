@@ -121,9 +121,31 @@ class AliasIndex<TEntry> {
 
 export class AppCatalog {
   readonly #index: AliasIndex<AppEntry>;
+  readonly #entries: readonly AppEntry[];
 
   constructor(entries: readonly AppEntry[] = DEFAULT_APPS) {
+    this.#entries = entries;
     this.#index = new AliasIndex(entries, (entry) => entry.aliases);
+  }
+
+  /**
+   * The catalogue as options for a typed choice.
+   *
+   * This, not keyword matching, is how it is meant to be used. A matcher has
+   * to commit on the first alias it happens to see, which is how "open chat
+   * gpt on a browser" launched Chrome. Options let the model weigh every
+   * candidate against the goal at once.
+   */
+  criteria(): Record<string, string> {
+    const out: Record<string, string> = {};
+    for (const entry of this.#entries) {
+      out[entry.appId] = `The ${entry.aliases[0] ?? entry.appId} application.`;
+    }
+    return out;
+  }
+
+  byKey(key: string): AppEntry | null {
+    return this.#entries.find((entry) => entry.appId === key) ?? null;
   }
 
   resolve(name: string): AppEntry | null {
@@ -137,9 +159,28 @@ export class AppCatalog {
 
 export class SiteCatalog {
   readonly #index: AliasIndex<SiteEntry>;
+  readonly #entries: readonly SiteEntry[];
 
   constructor(entries: readonly SiteEntry[] = DEFAULT_SITES) {
+    this.#entries = entries;
     this.#index = new AliasIndex(entries, (entry) => entry.aliases);
+  }
+
+  /** The catalogue as options for a typed choice, keyed by primary alias. */
+  criteria(): Record<string, string> {
+    const out: Record<string, string> = {};
+    for (const entry of this.#entries) {
+      const name = entry.aliases[0] ?? entry.url;
+      out[name] =
+        entry.searchTemplate === null
+          ? `The website ${name}.`
+          : `The website ${name}, which can also be searched directly.`;
+    }
+    return out;
+  }
+
+  byKey(key: string): SiteEntry | null {
+    return this.#entries.find((entry) => (entry.aliases[0] ?? entry.url) === key) ?? null;
   }
 
   resolve(name: string): SiteEntry | null {

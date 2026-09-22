@@ -6,6 +6,8 @@ import type { Observation } from "../../src/core/types/observation.js";
 import { FakeClock } from "../fixtures/fake-clock.js";
 import { FakeDecisionProvider, type ScriptedAnswer } from "../fixtures/fake-decision-provider.js";
 import { FakePerception, item, observation, offscreenControl } from "../fixtures/fake-perception.js";
+import { FakeLauncher } from "../fixtures/fake-launcher.js";
+import { SessionLedger } from "../../src/application/session/session-ledger.js";
 import { spoken } from "../fixtures/fake-launcher.js";
 
 const NEVER_ABORTED = new AbortController().signal;
@@ -51,8 +53,9 @@ function harness(
   const loop = new ScreenLoopHandler(
     new FakePerception(frames),
     decisions,
-    new ActionRunner(input, invoker),
+    new ActionRunner(input, invoker, new FakeLauncher()),
     clock,
+    new SessionLedger(clock),
     { maxSteps: options.maxSteps ?? 5, minConfidence: options.minConfidence ?? 0.4, settleMs: 10 },
   );
 
@@ -75,19 +78,46 @@ describe("ScreenLoopHandler stop rules", () => {
     expect(outcome.status === "failed" && outcome.reason).toContain("nothing on screen");
   });
 
-  it("stops rather than click something it is unsure of", async () => {
+  it("stops when it does not know what kind of action to take", async () => {
     const { loop, input, invoker } = harness(
       observation({ items: [item(0, "Maybe this"), item(1, "Or this")] }),
-      { kind: { choice: "click_item", confidence: 0.9 }, item: { choice: "0", confidence: 0.3 } },
+      { kind: { choice: "click_item", confidence: 0.2, spread: true }, item: { choice: "0", confidence: 0.9 } },
     );
 
     const outcome = await loop.execute(spoken("click something"), NEVER_ABORTED);
 
     expect(outcome.status).toBe("failed");
-    expect(outcome.status === "failed" && outcome.reason).toContain("not confident enough");
+    expect(outcome.status === "failed" && outcome.reason).toContain("what to do");
     // Nothing was touched.
     expect(invoker.invoke).not.toHaveBeenCalled();
     expect(input.click).not.toHaveBeenCalled();
+  });
+
+  it("acts when sure what to do but torn between equally good targets", async () => {
+    // Asked to play ANY song, the model spreads its mass across twenty videos
+    // that would all satisfy the goal. That is a spread, not confusion, and
+    // refusing it abandons a task that is going fine.
+    const { loop, invoker } = harness(
+      observation({ items: [item(0, "Song A"), item(1, "Song B")] }),
+      { kind: { choice: "click_item", confidence: 0.9 }, item: { choice: "0", confidence: 0.3 } },
+      { maxSteps: 1 },
+    );
+
+    await loop.execute(spoken("play any song"), NEVER_ABORTED);
+    expect(invoker.invoke).toHaveBeenCalled();
+  });
+
+  it("still stops when no target looks right at all", async () => {
+    const { loop, invoker } = harness(
+      observation({ items: [item(0, "Unrelated"), item(1, "Also unrelated")] }),
+      { kind: { choice: "click_item", confidence: 0.9 }, item: { choice: "0", confidence: 0.02, spread: true } },
+    );
+
+    const outcome = await loop.execute(spoken("click the thing"), NEVER_ABORTED);
+
+    expect(outcome.status).toBe("failed");
+    expect(outcome.status === "failed" && outcome.reason).toContain("which target");
+    expect(invoker.invoke).not.toHaveBeenCalled();
   });
 
   it("gates on the weaker of the two answers that chose the target", async () => {
@@ -101,15 +131,23 @@ describe("ScreenLoopHandler stop rules", () => {
     expect(outcome.status).toBe("failed");
   });
 
-  it("does not gate actions the next step could undo", async () => {
-    // A low-confidence scroll is harmless, so the loop proceeds and eventually
-    // runs out of steps rather than refusing to act.
-    const { loop, input } = harness(observation(), { kind: { choice: "scroll_down", confidence: 0.1 } }, { maxSteps: 2 });
+  it("gates untargeted actions too, because a coin-flip keypress is not free", async () => {
+    // Observed live: three press_escape actions at around 0.2 confidence,
+    // unchecked because escape names no target. Each burned a step and
+    // muddled the next decision.
+    const { loop, input } = harness(observation(), { kind: { choice: "press_escape", confidence: 0.2, spread: true } });
 
     const outcome = await loop.execute(spoken("find something"), NEVER_ABORTED);
 
+    expect(input.pressKey).not.toHaveBeenCalled();
+    expect(outcome.status === "failed" && outcome.reason).toContain("what to do");
+  });
+
+  it("takes an untargeted action it is confident about", async () => {
+    const { loop, input } = harness(observation(), { kind: { choice: "scroll_down", confidence: 0.8 } }, { maxSteps: 2 });
+
+    await loop.execute(spoken("find something"), NEVER_ABORTED);
     expect(input.scroll).toHaveBeenCalled();
-    expect(outcome.status === "failed" && outcome.reason).toContain("gave up after 2 steps");
   });
 
   it("stops when repeated actions change nothing", async () => {
@@ -275,8 +313,9 @@ describe("ScreenLoopHandler cancellation", () => {
     const loop = new ScreenLoopHandler(
       exploding,
       new FakeDecisionProvider({ kind: { choice: "done" } }),
-      new ActionRunner(inputSpy(), invokerSpy()),
+      new ActionRunner(inputSpy(), invokerSpy(), new FakeLauncher()),
       new FakeClock(),
+      new SessionLedger(new FakeClock()),
       { maxSteps: 3, settleMs: 1 },
     );
 
@@ -290,8 +329,9 @@ describe("ScreenLoopHandler cancellation", () => {
     const loop = new ScreenLoopHandler(
       broken,
       new FakeDecisionProvider({ kind: { choice: "done" } }),
-      new ActionRunner(inputSpy(), invokerSpy()),
+      new ActionRunner(inputSpy(), invokerSpy(), new FakeLauncher()),
       new FakeClock(),
+      new SessionLedger(new FakeClock()),
       { maxSteps: 3, settleMs: 1 },
     );
 

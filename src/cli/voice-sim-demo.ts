@@ -76,6 +76,7 @@ async function main(): Promise<void> {
   const agent = buildAgent({ decisions, fastPathOnly: true });
 
   const queue = new SerialCommandQueue(agent.chain, {
+    session: agent.session,
     onOutcome: (command, outcome) => {
       const detail = outcome.status === "completed" ? outcome.summary : outcome.reason;
       console.log(`${elapsed(started)}  -> ${outcome.status}: ${detail}`);

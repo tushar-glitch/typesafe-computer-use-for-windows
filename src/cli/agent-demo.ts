@@ -50,7 +50,7 @@ async function main(): Promise<void> {
 
   const agent = buildAgent({
     logger: consoleLogger(),
-    loop: { maxSteps: 6, minConfidence: 0.4, settleMs: 700 },
+    loop: { maxSteps: 20 },
   });
 
   console.log(`chain: ${agent.chain.order.join(" -> ")}`);

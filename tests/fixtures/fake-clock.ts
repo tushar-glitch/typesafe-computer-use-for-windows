@@ -10,6 +10,11 @@ export class FakeClock implements IClock {
     return milliseconds(this.#now);
   }
 
+  /** Move time forward without sleeping, for anything that expires. */
+  advance(byMs: number): void {
+    this.#now += byMs;
+  }
+
    
   async sleep(duration: Milliseconds): Promise<void> {
     this.sleeps.push(duration);

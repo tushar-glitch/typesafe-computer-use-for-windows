@@ -68,6 +68,7 @@ async function main(): Promise<void> {
 
   const queue = new SerialCommandQueue(agent.chain, {
     logger,
+    session: agent.session,
     onOutcome: (command, outcome) => {
       const detail = outcome.status === "completed" ? outcome.summary : outcome.reason;
       console.log(`  -> ${outcome.status}: ${detail}`);

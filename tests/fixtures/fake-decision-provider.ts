@@ -8,7 +8,18 @@ import { confidence } from "../../src/core/types/scalars.js";
 
 /** What the fake should answer for one question, keyed by question name. */
 export type ScriptedAnswer =
-  | { readonly choice: string; readonly confidence?: number }
+  | {
+      readonly choice: string;
+      readonly confidence?: number;
+      /**
+       * Spread the probability evenly instead of giving the winner all of it.
+       *
+       * Models a genuinely undecided answer, where the chosen option leads
+       * nothing. Without this a fake always looks decisive, and rules that
+       * read the distribution cannot be tested.
+       */
+      readonly spread?: boolean;
+    }
   | { readonly probability: number }
   | { readonly score: number; readonly confidence?: number };
 
@@ -63,10 +74,15 @@ export class FakeDecisionProvider implements IDecisionProvider {
           ? scripted.confidence
           : 1;
 
+        const spread = scripted !== undefined && "spread" in scripted && scripted.spread;
+        const even = labels.length === 0 ? 0 : 1 / labels.length;
+
         answers[key] = {
           choice: chosen,
           confidence: confidence(certainty),
-          probabilities: Object.fromEntries(labels.map((label) => [label, label === chosen ? certainty : 0])),
+          probabilities: Object.fromEntries(
+            labels.map((label) => [label, spread ? even : label === chosen ? certainty : 0]),
+          ),
         };
         continue;
       }

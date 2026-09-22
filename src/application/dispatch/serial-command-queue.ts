@@ -19,12 +19,21 @@ import type { ILogger } from "../../core/ports/platform.js";
 import type { CommandId, CommandOutcome, SpokenCommand } from "../../core/types/command.js";
 import { cancelled } from "../../core/types/command.js";
 import type { HandlerChain } from "../handlers/handler-chain.js";
+import type { SessionLedger } from "../session/session-ledger.js";
 
 export type OutcomeListener = (command: SpokenCommand, outcome: CommandOutcome) => void;
 
 export interface SerialCommandQueueOptions {
   readonly logger?: ILogger;
   readonly onOutcome?: OutcomeListener;
+  /**
+   * Where finished tasks are remembered.
+   *
+   * Recorded here rather than inside a handler because every outcome matters,
+   * including the cancelled and unhandled ones: a follow-up is often a reaction
+   * to something that did not work.
+   */
+  readonly session?: SessionLedger;
 }
 
 interface Entry {
@@ -35,6 +44,7 @@ export class SerialCommandQueue implements ICommandQueue {
   readonly #chain: HandlerChain;
   readonly #logger: ILogger | undefined;
   readonly #onOutcome: OutcomeListener | undefined;
+  readonly #session: SessionLedger | undefined;
 
   readonly #queued: Entry[] = [];
   #running: { readonly command: SpokenCommand; readonly controller: AbortController } | null = null;
@@ -44,6 +54,7 @@ export class SerialCommandQueue implements ICommandQueue {
     this.#chain = chain;
     this.#logger = options.logger;
     this.#onOutcome = options.onOutcome;
+    this.#session = options.session;
   }
 
   get pending(): number {
@@ -127,6 +138,7 @@ export class SerialCommandQueue implements ICommandQueue {
 
   #report(command: SpokenCommand, outcome: CommandOutcome): void {
     this.#logger?.debug("command finished", { id: command.id, status: outcome.status });
+    this.#session?.recordTask(command, outcome);
     this.#onOutcome?.(command, outcome);
   }
 }

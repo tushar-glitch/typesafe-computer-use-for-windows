@@ -19,8 +19,19 @@ import type { CommandOutcome, SpokenCommand } from "../../core/types/command.js"
 import { cancelled, completed, failed } from "../../core/types/command.js";
 import { milliseconds } from "../../core/types/scalars.js";
 import type { ActionRunner } from "./action-runner.js";
-import { buildQuestions, buildState, interpret, UnreadableDecisionError } from "./questions.js";
+import { buildQuestions, buildState, interpret, UnreadableDecisionError, type LoopContext } from "./questions.js";
+import type { SessionLedger } from "../session/session-ledger.js";
+import { AppCatalog, SiteCatalog } from "../catalog/catalogs.js";
 import { stripFiller } from "../parsing/utterance.js";
+
+/** The readable part of a URL, for a referent a person would recognise. */
+function hostOf(url: string): string {
+  try {
+    return new URL(url).host;
+  } catch {
+    return url;
+  }
+}
 
 /** Why a run ended. Reported to the speaker, so each reads as a sentence. */
 export type StopReason =
@@ -34,26 +45,84 @@ export type StopReason =
 
 export interface ScreenLoopOptions {
   readonly logger?: ILogger;
+  readonly apps?: AppCatalog;
+  readonly sites?: SiteCatalog;
   /** Most steps before giving up. */
   readonly maxSteps?: number;
   /**
-   * Confidence below which a targeted action is not taken.
+   * Confidence below which no action is taken at all.
    *
-   * Applies only to clicks and presses: those land somewhere, and the wrong
-   * somewhere is not undone by the next step.
+   * Read against the KIND answer: does the model know what sort of thing to do
+   * here? Below this it does not, and acting anyway produces the behaviour
+   * this was written for, a run that pressed escape three times at 0.2
+   * confidence because nothing was stopping it.
    */
   readonly minConfidence?: number;
+  /**
+   * Floor for the answer that names a target, when there is one.
+   *
+   * Much lower than minConfidence, and deliberately so. A goal can admit many
+   * equally good targets: asked to play ANY song, the model spreads its mass
+   * across twenty videos that would all satisfy the goal, and reports low
+   * confidence because it is genuinely undecided between them, not because it
+   * is lost. Requiring the same bar there refuses a task that is going fine.
+   * This floor still catches the case where nothing looks right at all.
+   */
+  readonly minTargetConfidence?: number;
   /** Consecutive ineffective actions before the run is judged stuck. */
   readonly maxNoops?: number;
+  /**
+   * Consecutive uncertain glances before the run gives up.
+   *
+   * One uncertain look is not a reason to abandon a task. A page mid-render
+   * offers half its controls, and the honest answer at that moment is low
+   * confidence; a second later it is obvious. A person would look again, so
+   * the loop does too.
+   */
+  readonly maxUnsure?: number;
+  /**
+   * Repeated identical uncertain answers that count as corroboration.
+   *
+   * A model can be right and under-confident. On a results page, clicking a
+   * video led the alternatives by about two to one and still reported 0.3,
+   * because scrolling and stopping were each defensible too. Giving up there
+   * abandons a task that was going correctly.
+   *
+   * Looking again is not a free retry of the same question: the screen is
+   * observed afresh each time, so an answer that survives several looks has
+   * survived several independent observations. When the screen is genuinely
+   * unsettled the answer moves instead, and the count resets, which is exactly
+   * the case that should keep waiting.
+   */
+  readonly corroboratingLooks?: number;
   /** Pause after an action, letting the screen settle before it is read again. */
   readonly settleMs?: number;
+  /**
+   * Pause after navigating or launching.
+   *
+   * Longer than an ordinary settle: a click repaints, but a page load or an
+   * application start takes seconds, and reading too early sees a blank frame.
+   */
+  readonly navigationSettleMs?: number;
 }
+
+/**
+ * How far ahead the chosen option must be for repetition to count as evidence.
+ *
+ * Against the runner-up, not in absolute terms: the question is whether the
+ * model prefers this action, not whether it is sure of it.
+ */
+const LEAD_RATIO = 1.5;
 
 const DEFAULTS = {
   maxSteps: 25,
   minConfidence: 0.4,
   maxNoops: 2,
+  minTargetConfidence: 0.15,
+  maxUnsure: 3,
+  corroboratingLooks: 2,
   settleMs: 600,
+  navigationSettleMs: 1800,
 } as const;
 
 export class ScreenLoopHandler implements ICommandHandler {
@@ -66,16 +135,27 @@ export class ScreenLoopHandler implements ICommandHandler {
   readonly #logger: ILogger | undefined;
   readonly #maxSteps: number;
   readonly #minConfidence: number;
+  readonly #minTargetConfidence: number;
   readonly #maxNoops: number;
+  readonly #maxUnsure: number;
+  readonly #corroboratingLooks: number;
   readonly #settleMs: number;
+  readonly #navigationSettleMs: number;
+  readonly #apps: AppCatalog;
+  readonly #sites: SiteCatalog;
+  readonly #session: SessionLedger;
 
   constructor(
     perception: IPerceptionPipeline,
     decisions: IDecisionProvider,
     actions: ActionRunner,
     clock: IClock,
+    session: SessionLedger,
     options: ScreenLoopOptions = {},
   ) {
+    this.#session = session;
+    this.#apps = options.apps ?? new AppCatalog();
+    this.#sites = options.sites ?? new SiteCatalog();
     this.#perception = perception;
     this.#decisions = decisions;
     this.#actions = actions;
@@ -83,8 +163,12 @@ export class ScreenLoopHandler implements ICommandHandler {
     this.#logger = options.logger;
     this.#maxSteps = options.maxSteps ?? DEFAULTS.maxSteps;
     this.#minConfidence = options.minConfidence ?? DEFAULTS.minConfidence;
+    this.#minTargetConfidence = options.minTargetConfidence ?? DEFAULTS.minTargetConfidence;
     this.#maxNoops = options.maxNoops ?? DEFAULTS.maxNoops;
+    this.#maxUnsure = options.maxUnsure ?? DEFAULTS.maxUnsure;
+    this.#corroboratingLooks = options.corroboratingLooks ?? DEFAULTS.corroboratingLooks;
     this.#settleMs = options.settleMs ?? DEFAULTS.settleMs;
+    this.#navigationSettleMs = options.navigationSettleMs ?? DEFAULTS.navigationSettleMs;
   }
 
   /**
@@ -117,6 +201,9 @@ export class ScreenLoopHandler implements ICommandHandler {
   async #run(command: SpokenCommand, signal: AbortSignal): Promise<CommandOutcome> {
     const history: string[] = [];
     let consecutiveNoops = 0;
+    let consecutiveUnsure = 0;
+    let agreements = 0;
+    let lastUnsureAction = "";
 
     for (let step = 1; step <= this.#maxSteps; step++) {
       if (signal.aborted) {
@@ -125,16 +212,26 @@ export class ScreenLoopHandler implements ICommandHandler {
 
       const observation = await this.#perception.observe(signal);
 
+      // The session tracks where things stand, so a later sentence can be
+      // understood against it rather than in isolation.
+      this.#session.observeWorld(observation);
+
+      const context: LoopContext = {
+        apps: this.#apps,
+        sites: this.#sites,
+        session: this.#session.snapshot(),
+      };
+
       let decision;
       try {
         const answers = await this.#decisions.decide(
           {
-            state: buildState(command.text, observation, history),
-            questions: buildQuestions(observation),
+            state: buildState(command.text, observation, history, context),
+            questions: buildQuestions(command.text, observation, context),
           },
           signal,
         );
-        decision = interpret(answers, observation);
+        decision = interpret(answers, observation, context, command.text);
       } catch (error: unknown) {
         if (error instanceof UnreadableDecisionError) {
           // The model answered with something that does not describe this
@@ -148,7 +245,9 @@ export class ScreenLoopHandler implements ICommandHandler {
       this.#logger?.debug("step", {
         step,
         kind: decision.kind,
-        confidence: decision.confidence,
+        kindConfidence: decision.kindConfidence,
+        kindLead: decision.kindLead,
+        targetConfidence: decision.targetConfidence,
         items: observation.items.length,
       });
 
@@ -158,19 +257,88 @@ export class ScreenLoopHandler implements ICommandHandler {
           : this.#stop("nothing-helps", history, "nothing on screen helped with the goal");
       }
 
-      // Only actions that commit to a target are gated. A scroll or a wait
-      // chosen on a coin flip costs nothing; a click on the wrong thing does.
-      const targeted = decision.action.kind === "click_item" || decision.action.kind === "press_offscreen";
-      if (targeted && decision.confidence < this.#minConfidence) {
-        return this.#stop(
-          "low-confidence",
-          history,
-          `not confident enough to act (${decision.confidence.toFixed(2)} below ${this.#minConfidence})`,
-        );
+      // Two different questions, two different bars. Whether to act at all is
+      // the kind answer, and it must be confident whatever the action is: an
+      // escape pressed on a coin flip is not free, it burns a step and muddles
+      // the next one. Which target to act on is the second answer, and it is
+      // allowed to be much less certain, because a goal that admits many equally
+      // good targets produces a spread rather than a winner.
+      const unsureKind = decision.kindConfidence < this.#minConfidence;
+      const unsureTarget =
+        decision.targetConfidence !== null && decision.targetConfidence < this.#minTargetConfidence;
+
+      if (unsureKind || unsureTarget) {
+        // An answer that survives repeated looks at a freshly observed screen
+        // is corroborated, however hesitant each individual look was.
+        const fingerprint = JSON.stringify(decision.action);
+        agreements = fingerprint === lastUnsureAction ? agreements + 1 : 0;
+        lastUnsureAction = fingerprint;
+
+        // Repetition alone is not evidence: a loop flailing between options
+        // repeats too. The answer must also lead the alternatives, which is
+        // what separates "torn between two good options" from "no idea".
+        // Measured live: clicking a video led two to one at 0.3 confidence and
+        // was correct; a stuck escape at 0.2 led nothing.
+        const leads = (lead: { top: number; runnerUp: number } | null): boolean =>
+          lead === null || lead.top >= LEAD_RATIO * lead.runnerUp;
+
+        // Both answers must lead. A confident "click something" over a flat
+        // list of candidates is not corroborated by repeating it; it just
+        // clicks whichever item happened to come first.
+        const decisive = leads(decision.kindLead) && leads(decision.targetLead);
+
+        if (agreements >= this.#corroboratingLooks && decisive) {
+          this.#logger?.info("acting on a judgement that held across repeated looks", {
+            action: decision.kind,
+            looks: agreements + 1,
+            kindConfidence: decision.kindConfidence,
+            lead: decision.kindLead,
+          });
+        } else {
+          consecutiveUnsure++;
+
+          if (consecutiveUnsure >= this.#maxUnsure) {
+          return this.#stop(
+            "low-confidence",
+            history,
+              `not confident enough to act after ${consecutiveUnsure} looks `
+                + `(${unsureKind ? "what to do" : "which target"}: `
+                + `${(unsureKind ? decision.kindConfidence : (decision.targetConfidence ?? 0)).toFixed(2)})`,
+            );
+          }
+
+          // Look again rather than abandon. A page part way through rendering
+          // offers half its controls, and low confidence is the honest answer
+          // at that instant; a moment later the same screen is obvious.
+          this.#logger?.debug("unsure; looking again", {
+            reason: unsureKind ? "what to do" : "which target",
+            kindConfidence: decision.kindConfidence,
+            targetConfidence: decision.targetConfidence,
+            attempt: consecutiveUnsure,
+          });
+          await this.#clock.sleep(milliseconds(this.#navigationSettleMs), signal);
+          continue;
+        }
+      } else {
+        consecutiveUnsure = 0;
+        agreements = 0;
+        lastUnsureAction = "";
       }
 
       const report = await this.#actions.run(decision.action, { goal: command.text, observation }, signal);
       history.push(report.description);
+
+      // Note anything a later sentence might point back to. "Open it again"
+      // and "ask him about that" are only answerable against things that
+      // actually happened, and in a session running for hours most of what is
+      // said will be a follow-up to something earlier.
+      if (report.effective) {
+        if (decision.action.kind === "launch_app") {
+          this.#session.remember("app", decision.action.appId, decision.action.appId);
+        } else if (decision.action.kind === "open_url") {
+          this.#session.remember("website", decision.action.url, hostOf(decision.action.url));
+        }
+      }
       this.#logger?.debug("acted", { did: report.description, effective: report.effective });
 
       // A repeat of the previous action means the screen did not respond to
@@ -182,7 +350,13 @@ export class ScreenLoopHandler implements ICommandHandler {
         return this.#stop("stalled", history, "the last actions changed nothing");
       }
 
-      await this.#clock.sleep(milliseconds(this.#settleMs), signal);
+      // Navigating and launching take far longer to land than a click, and
+      // reading too early sees a blank or half-drawn window.
+      const navigated = decision.action.kind === "open_url" || decision.action.kind === "launch_app";
+      await this.#clock.sleep(
+        milliseconds(navigated ? this.#navigationSettleMs : this.#settleMs),
+        signal,
+      );
     }
 
     return this.#stop("step-limit", history, `gave up after ${this.#maxSteps} steps`);
