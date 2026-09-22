@@ -11,7 +11,10 @@ import { TypeSafeDecisionProvider } from "../adapters/decision/typesafe-decision
 import { SystemClock } from "../adapters/platform/system-clock.js";
 import { startSidecar } from "../adapters/windows/sidecar-process.js";
 import type { SidecarClient } from "../adapters/windows/sidecar-client.js";
-import { WindowsAccessibilityProvider } from "../adapters/windows/windows-accessibility-provider.js";
+import {
+  WindowsAccessibilityProvider,
+  WindowsFocusedFieldReader,
+} from "../adapters/windows/windows-accessibility-provider.js";
 import { WindowsAppLauncher } from "../adapters/windows/windows-app-launcher.js";
 import { WindowsElementInvoker } from "../adapters/windows/windows-element-invoker.js";
 import { WindowsInputDevice } from "../adapters/windows/windows-input-device.js";
@@ -21,6 +24,7 @@ import { DeepLinkSearchHandler } from "../application/handlers/deep-link-search-
 import { HandlerChain } from "../application/handlers/handler-chain.js";
 import { LaunchAppHandler } from "../application/handlers/launch-app-handler.js";
 import { OpenSiteHandler } from "../application/handlers/open-site-handler.js";
+import { TypeTextHandler } from "../application/handlers/type-text-handler.js";
 import { ActionRunner } from "../application/loop/action-runner.js";
 import { ScreenLoopHandler, type ScreenLoopOptions } from "../application/loop/screen-loop-handler.js";
 import { PerceptionPipeline } from "../application/perception/perception-pipeline.js";
@@ -67,8 +71,10 @@ export function buildAgent(options: BuildAgentOptions = {}): Agent {
     options.logger === undefined ? {} : { logger: options.logger },
   );
 
+  const input = new WindowsInputDevice(sidecar);
+
   const actions = new ActionRunner(
-    new WindowsInputDevice(sidecar),
+    input,
     new WindowsElementInvoker(sidecar),
     options.logger === undefined ? {} : { logger: options.logger },
   );
@@ -80,6 +86,15 @@ export function buildAgent(options: BuildAgentOptions = {}): Agent {
     new DeepLinkSearchHandler(launcher),
     new LaunchAppHandler(launcher),
     new OpenSiteHandler(launcher),
+    // Typing is a fast-path action: the characters are already in the
+    // sentence. It hands back to the chain when nothing editable has focus, so
+    // the screen loop can click into a field first.
+    new TypeTextHandler(
+      input,
+      new WindowsFocusedFieldReader(sidecar),
+      undefined,
+      options.logger === undefined ? {} : { logger: options.logger },
+    ),
     ...(options.fastPathOnly === true
       ? []
       : [
@@ -100,7 +115,7 @@ export function buildAgent(options: BuildAgentOptions = {}): Agent {
       // Both are best-effort. A failed warm-up must never stop the agent
       // starting; it only means the first command pays what this would have.
       await Promise.allSettled([
-        sidecar.request("ping", {} as Readonly<Record<string, never>>, signal === undefined ? {} : { signal }),
+        sidecar.request("ping", {}, signal === undefined ? {} : { signal }),
         decisions instanceof TypeSafeDecisionProvider ? decisions.warm(signal) : Promise.resolve(),
       ]);
     },

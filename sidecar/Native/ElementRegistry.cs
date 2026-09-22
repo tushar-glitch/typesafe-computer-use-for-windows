@@ -36,7 +36,17 @@ internal sealed class ElementRegistry
     public string Add(IUIAutomationElement element)
     {
         string handle = $"e{++_counter}";
-        _generations[_generation][handle] = element;
+
+        // The generation is created on demand rather than only by a walk.
+        // Reading the focused element is a legitimate first call, and it hands
+        // back a handle without any tree having been walked.
+        if (!_generations.TryGetValue(_generation, out Dictionary<string, IUIAutomationElement>? generation))
+        {
+            generation = [];
+            _generations[_generation] = generation;
+        }
+
+        generation[handle] = element;
         return handle;
     }
 

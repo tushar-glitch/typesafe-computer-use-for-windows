@@ -2,10 +2,12 @@ import { describe, expect, it } from "vitest";
 import {
   afterNamingClause,
   afterPrefix,
+  asDomain,
   looksLikeDomain,
   normalize,
   splitOnTarget,
   stripFiller,
+  writeSpokenPunctuation,
 } from "../../src/application/parsing/utterance.js";
 
 describe("normalize", () => {
@@ -103,5 +105,32 @@ describe("afterNamingClause", () => {
 
   it("returns null when the marker ends the phrase mid-sentence", () => {
     expect(afterNamingClause("my favourite song which is")).toBeNull();
+  });
+});
+
+describe("spoken addresses", () => {
+  it("writes out dictated punctuation", () => {
+    // Deepgram transcribes what it hears, and nobody says "full stop".
+    expect(writeSpokenPunctuation("binance dot com")).toBe("binance.com");
+    expect(writeSpokenPunctuation("news dot ycombinator dot com slash newest")).toBe(
+      "news.ycombinator.com/newest",
+    );
+    expect(writeSpokenPunctuation("my dash site dot co dot uk")).toBe("my-site.co.uk");
+  });
+
+  it("recognises a dictated address as an address", () => {
+    // Found in a real spoken run: "open binance dot com" was not recognised,
+    // so it fell through to the screen loop instead of opening a browser.
+    expect(asDomain("binance dot com")).toBe("binance.com");
+    expect(looksLikeDomain("binance dot com")).toBe(true);
+  });
+
+  it("still accepts an address said as one word", () => {
+    expect(asDomain("example.com")).toBe("example.com");
+  });
+
+  it("leaves ordinary prose containing the word dot alone", () => {
+    expect(asDomain("connect the dots for me")).toBeNull();
+    expect(asDomain("play dot matrix music")).toBeNull();
   });
 });

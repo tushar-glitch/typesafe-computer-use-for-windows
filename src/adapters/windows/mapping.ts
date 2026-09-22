@@ -7,12 +7,12 @@
  */
 
 import type { Rect } from "../../core/types/geometry.js";
-import type {
-  ElementHandle,
-  FocusedField,
-  ForegroundWindow,
-  ScreenImage,
-  UiRole,
+import {
+  elementHandle,
+  type FocusedField,
+  type ForegroundWindow,
+  type ScreenImage,
+  type UiRole,
 } from "../../core/types/observation.js";
 import { confidence, milliseconds, type Confidence } from "../../core/types/scalars.js";
 import type { AccessibilityElement, AccessibilitySnapshot, OcrLine } from "../../core/ports/perception.js";
@@ -103,7 +103,7 @@ export function toAccessibilityElement(dto: UiaElementDto): AccessibilityElement
     label: dto.label,
     bounds: toRect(dto.bounds),
     invokable: dto.invokable,
-    handle: dto.handle as ElementHandle,
+    handle: elementHandle(dto.handle),
   };
 }
 
@@ -114,7 +114,7 @@ export function toFocusedField(dto: FocusedFieldDto): FocusedField {
     placeholder: dto.placeholder,
     value: dto.value,
     bounds: toRect(dto.bounds),
-    element: dto.handle === null ? null : (dto.handle as ElementHandle),
+    element: dto.handle === null ? null : elementHandle(dto.handle),
     isEditable: dto.isEditable,
   };
 }

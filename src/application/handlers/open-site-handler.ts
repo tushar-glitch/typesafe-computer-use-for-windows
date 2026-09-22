@@ -13,7 +13,7 @@ import type { ILogger } from "../../core/ports/platform.js";
 import type { CommandOutcome, SpokenCommand } from "../../core/types/command.js";
 import { completed, failed, unhandled } from "../../core/types/command.js";
 import { SiteCatalog } from "../catalog/catalogs.js";
-import { afterPrefix, looksLikeDomain, stripFiller } from "../parsing/utterance.js";
+import { afterPrefix, asDomain, stripFiller } from "../parsing/utterance.js";
 
 const NAVIGATE_VERBS = [
   "open",
@@ -65,11 +65,12 @@ export class OpenSiteHandler implements ICommandHandler {
     const named = this.#sites.resolve(remainder) ?? this.#sites.find(remainder);
     if (named !== null) return named.url;
 
-    // A spoken address, as a last resort. `looksLikeDomain` is deliberately
-    // strict: guessing wrong navigates somewhere nobody asked for.
-    if (looksLikeDomain(remainder)) {
-      const bare = remainder.replace(/\s+/g, "");
-      return bare.startsWith("http") ? bare : `https://${bare}`;
+    // A spoken address, as a last resort. `asDomain` writes out spoken
+    // punctuation first, so "binance dot com" is recognised, and is strict
+    // after that: guessing wrong navigates somewhere nobody asked for.
+    const domain = asDomain(remainder);
+    if (domain !== null) {
+      return domain.startsWith("http") ? domain : `https://${domain}`;
     }
 
     return null;

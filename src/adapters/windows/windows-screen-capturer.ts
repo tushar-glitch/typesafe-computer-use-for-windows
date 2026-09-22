@@ -9,7 +9,7 @@
 
 import type { CaptureTarget, IScreenCapturer, ScreenCapture } from "../../core/ports/perception.js";
 import { toForegroundWindow, toScreenImage } from "./mapping.js";
-import type { SidecarClient, SidecarRequestOptions } from "./sidecar-client.js";
+import type { SidecarClient } from "./sidecar-client.js";
 
 /** A full-desktop PNG is hundreds of kilobytes of base64; allow for the transfer. */
 const DEFAULT_TIMEOUT_MS = 15_000;

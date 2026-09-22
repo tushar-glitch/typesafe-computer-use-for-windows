@@ -33,7 +33,13 @@ export type UiRole =
  * The TypeScript side never dereferences it; it hands it back when it wants
  * that element invoked or filled.
  */
-export type ElementHandle = string & { readonly __element?: never };
+declare const elementBrand: unique symbol;
+
+export type ElementHandle = string & { readonly [elementBrand]: "ElementHandle" };
+
+export function elementHandle(value: string): ElementHandle {
+  return value as ElementHandle;
+}
 
 /** One thing on screen worth acting on. */
 export interface UiItem {

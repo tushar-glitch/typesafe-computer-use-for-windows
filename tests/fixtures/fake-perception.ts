@@ -58,7 +58,7 @@ export class FakePerception implements IPerceptionPipeline {
     this.#frames = Array.isArray(frames) ? frames : [frames as Observation];
   }
 
-  // eslint-disable-next-line @typescript-eslint/require-await
+   
   async observe(): Promise<Observation> {
     const frame = this.#frames[Math.min(this.observations, this.#frames.length - 1)];
     this.observations++;

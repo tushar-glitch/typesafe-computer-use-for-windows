@@ -242,3 +242,60 @@ describe("ScreenLoopHandler questions", () => {
     expect(second.previous_actions[0]).toContain("pressed");
   });
 });
+
+describe("ScreenLoopHandler claiming", () => {
+  it("claims an ordinary command", () => {
+    const { loop } = harness(observation(), { kind: { choice: "done" } });
+    expect(loop.canHandle(spoken("open the format menu"))).toBe(true);
+  });
+
+  it("refuses a command that is only filler", () => {
+    // A stray connector left over from continuous speech. It has no goal, so
+    // the loop would act on whatever scored least badly and stall.
+    const { loop } = harness(observation(), { kind: { choice: "done" } });
+    expect(loop.canHandle(spoken("then"))).toBe(false);
+    expect(loop.canHandle(spoken("okay so um"))).toBe(false);
+  });
+});
+
+describe("ScreenLoopHandler cancellation", () => {
+  it("reports an abort mid-step as cancelled, not failed", async () => {
+    // Barge-in aborts whatever is in flight, and the rejection surfaces as
+    // whatever that request threw. Reported as a failure it reads as though
+    // the command broke, when the speaker simply replaced it.
+    const controller = new AbortController();
+
+    const exploding = {
+      observe: (): Promise<never> => {
+        controller.abort();
+        return Promise.reject(new Error("ocr: aborted while in flight"));
+      },
+    };
+
+    const loop = new ScreenLoopHandler(
+      exploding,
+      new FakeDecisionProvider({ kind: { choice: "done" } }),
+      new ActionRunner(inputSpy(), invokerSpy()),
+      new FakeClock(),
+      { maxSteps: 3, settleMs: 1 },
+    );
+
+    const outcome = await loop.execute(spoken("do something"), controller.signal);
+    expect(outcome.status).toBe("cancelled");
+  });
+
+  it("still reports a genuine error as a failure", async () => {
+    const broken = { observe: (): Promise<never> => Promise.reject(new Error("screen capture failed")) };
+
+    const loop = new ScreenLoopHandler(
+      broken,
+      new FakeDecisionProvider({ kind: { choice: "done" } }),
+      new ActionRunner(inputSpy(), invokerSpy()),
+      new FakeClock(),
+      { maxSteps: 3, settleMs: 1 },
+    );
+
+    // Nothing aborted it, so the error must not be disguised as cancellation.
+    await expect(loop.execute(spoken("do something"), NEVER_ABORTED)).rejects.toThrow(/screen capture failed/);
+  });
+});

@@ -155,12 +155,38 @@ export function splitOnTarget(text: string, separators: readonly string[] = ["on
  * positive navigates the browser somewhere the speaker never asked for.
  */
 export function looksLikeDomain(text: string): boolean {
-  // Not `normalize`: that strips the dots, which are the whole signal here.
-  // Whitespace is removed because speech engines render "example dot com" and
-  // dictated URLs with spaces around the separators.
-  const candidate = text.toLowerCase().replace(/\s+/g, "").replace(/[,!?;:]+$/, "").replace(/\.$/, "");
-  return /^(?:https?:\/\/)?(?:[a-z0-9-]+\.)+[a-z]{2,}(?:\/\S*)?$/.test(candidate);
+  return asDomain(text) !== null;
 }
+
+/**
+ * The text as a bare domain, or null when it is not one.
+ *
+ * Spoken punctuation is written out first, so "binance dot com" is recognised
+ * as the address it is. Without that step every dictated address fails to look
+ * like one and is handed to the screen loop, which cannot do anything with it.
+ *
+ * Strict after that: a false positive navigates somewhere nobody asked for.
+ */
+export function asDomain(text: string): string | null {
+  // Already written as an address, as when one is typed or pasted. Tried
+  // first and without `normalize`, which strips the colon out of "https://".
+  const direct = text.trim().toLowerCase().replace(/[,!?;]+$/, "").replace(/\.$/, "");
+  if (DOMAIN.test(direct)) return direct;
+
+  const written = writeSpokenPunctuation(text);
+
+  // Whitespace left after writing out the punctuation means prose, not an
+  // address. Removing it instead would turn "play dot matrix music" into
+  // "play.matrixmusic", which matches the pattern and navigates somewhere
+  // nobody asked for.
+  if (/\s/.test(written)) return null;
+
+  const candidate = written.replace(/[,!?;:]+$/, "").replace(/\.$/, "");
+  return DOMAIN.test(candidate) ? candidate : null;
+}
+
+/** A hostname with at least one dot, optionally a scheme and a path. */
+const DOMAIN = /^(?:https?:\/\/)?(?:[a-z0-9-]+\.)+[a-z]{2,24}(?:\/\S*)?$/;
 
 /**
  * The name at the end of a naming clause, if there is one.
@@ -194,4 +220,31 @@ export function afterNamingClause(text: string): string | null {
   }
 
   return name;
+}
+
+/**
+ * Spoken punctuation, written out.
+ *
+ * A recogniser transcribes what it hears, and nobody says "binance full
+ * stop com": they say "binance dot com", and Deepgram returns exactly that.
+ * Without this, every dictated address fails to look like an address and is
+ * handed to the screen loop, which has no idea what to do with it.
+ *
+ * Only the separators that appear in web addresses, and only between words,
+ * so ordinary prose containing "dot" is left alone.
+ */
+const SPOKEN_SEPARATORS: readonly (readonly [spoken: RegExp, written: string])[] = [
+  [/\s+(?:dot|doht)\s+/g, "."],
+  [/\s+slash\s+/g, "/"],
+  [/\s+(?:dash|hyphen)\s+/g, "-"],
+  [/\s+underscore\s+/g, "_"],
+  [/\s+colon\s+/g, ":"],
+];
+
+export function writeSpokenPunctuation(text: string): string {
+  let result = normalize(text);
+  for (const [spoken, written] of SPOKEN_SEPARATORS) {
+    result = result.replace(spoken, written);
+  }
+  return result.trim();
 }

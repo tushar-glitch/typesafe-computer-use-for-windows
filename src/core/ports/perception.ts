@@ -93,6 +93,18 @@ export interface IAccessibilityProvider {
   snapshot(options?: AccessibilityOptions, signal?: AbortSignal): Promise<AccessibilitySnapshot>;
 }
 
+/**
+ * Just the element holding keyboard focus.
+ *
+ * Separate from the full snapshot because the cost differs by an order of
+ * magnitude: a tree walk is budgeted at 400ms, while the focused element is a
+ * single call. Anything that only needs to know whether there is somewhere to
+ * type should not pay for the rest of the window.
+ */
+export interface IFocusedFieldReader {
+  focusedField(signal?: AbortSignal): Promise<FocusedField | null>;
+}
+
 /** Reads the active tab URL from a supported browser. Separate because only browsers have one. */
 export interface IBrowserInspector {
   activeTabUrl(foreground: ForegroundWindow, signal?: AbortSignal): Promise<string | null>;

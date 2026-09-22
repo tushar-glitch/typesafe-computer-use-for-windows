@@ -96,6 +96,10 @@ export interface UiaTreeDto {
   readonly elapsedMs: number;
 }
 
+export interface FocusedFieldResultDto {
+  readonly field: FocusedFieldDto | null;
+}
+
 export interface UiaTreeParams {
   /** Wall-clock ceiling for the walk, in milliseconds. */
   readonly budgetMs?: number;
@@ -153,6 +157,7 @@ export interface SidecarCommands {
   readonly capture: { readonly params: { readonly target: CaptureTarget }; readonly result: CaptureDto };
   readonly ocr: { readonly params: OcrParams; readonly result: OcrResultDto };
   readonly uia_tree: { readonly params: UiaTreeParams; readonly result: UiaTreeDto };
+  readonly focused_field: { readonly params: EmptyParams; readonly result: FocusedFieldResultDto };
 
   readonly input_click: { readonly params: PointParams; readonly result: ActionAckDto };
   readonly input_move: { readonly params: PointParams; readonly result: ActionAckDto };
@@ -174,7 +179,7 @@ export interface SidecarCommands {
   readonly activate_app: { readonly params: { readonly processName: string }; readonly result: ActivateDto };
 }
 
-export type SidecarCommandName = keyof SidecarCommands & string;
+export type SidecarCommandName = keyof SidecarCommands;
 
 export type ParamsOf<C extends SidecarCommandName> = SidecarCommands[C]["params"];
 

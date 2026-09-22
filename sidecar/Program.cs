@@ -15,8 +15,16 @@ namespace JevSidecar;
 /// </summary>
 internal static class Program
 {
-    private static int Main()
+    private static int Main(string[] args)
     {
+        // Audio is a continuous binary stream, so it gets the whole of stdout
+        // rather than a command on the JSON channel. Same executable, so there
+        // is only ever one binary to locate and ship.
+        if (args.Contains("--audio", StringComparer.Ordinal))
+        {
+            return MicrophoneCapture.Run();
+        }
+
         // Must run before any window or screen query, or every rectangle comes
         // back in virtualised coordinates on a scaled display.
         _ = NativeMethods.SetProcessDpiAwarenessContext(NativeMethods.DpiAwarenessContextPerMonitorAwareV2);
@@ -71,6 +79,7 @@ internal static class Program
             new CaptureCommand(),
             new OcrCommand(),
             new UiaTreeCommand(registry),
+            new FocusedFieldCommand(registry),
         ];
         handlers.AddRange(InputCommands.All());
         handlers.AddRange(ElementCommands.All(registry));

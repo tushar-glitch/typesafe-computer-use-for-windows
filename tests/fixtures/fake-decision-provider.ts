@@ -40,9 +40,9 @@ export class FakeDecisionProvider implements IDecisionProvider {
     this.#failWith = error;
   }
 
-  // eslint-disable-next-line @typescript-eslint/require-await
+   
   async decide<Q extends QuestionSet>(request: DecisionRequest<Q>): Promise<DecisionAnswers<Q>> {
-    this.requests.push(request as DecisionRequest<QuestionSet>);
+    this.requests.push(request);
 
     if (this.#failWith !== null) {
       const error = this.#failWith;

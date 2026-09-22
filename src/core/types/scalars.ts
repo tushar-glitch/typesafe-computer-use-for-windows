@@ -47,5 +47,5 @@ export const IMPOSSIBLE: Confidence = 0 as Confidence;
 
 /** The lower of two confidences: how a compound decision is scored. */
 export function weakest(a: Confidence, b: Confidence): Confidence {
-  return (a < b ? a : b) as Confidence;
+  return (a < b ? a : b);
 }

@@ -20,6 +20,7 @@ import { cancelled, completed, failed } from "../../core/types/command.js";
 import { milliseconds } from "../../core/types/scalars.js";
 import type { ActionRunner } from "./action-runner.js";
 import { buildQuestions, buildState, interpret, UnreadableDecisionError } from "./questions.js";
+import { stripFiller } from "../parsing/utterance.js";
 
 /** Why a run ended. Reported to the speaker, so each reads as a sentence. */
 export type StopReason =
@@ -86,12 +87,34 @@ export class ScreenLoopHandler implements ICommandHandler {
     this.#settleMs = options.settleMs ?? DEFAULTS.settleMs;
   }
 
-  /** The fallback: it claims anything nothing cheaper wanted. */
-  canHandle(): boolean {
-    return true;
+  /**
+   * The fallback: it claims anything nothing cheaper wanted, except nothing.
+   *
+   * A command that is only filler carries no goal, so there is nothing for the
+   * loop to make progress towards. It would perceive, ask, act on whatever
+   * scored least badly, and stall two steps later. Observed with a stray
+   * "then" left over from continuous speech, which cost 2.3 seconds to fail.
+   */
+  canHandle(command: SpokenCommand): boolean {
+    return stripFiller(command.text).length > 0;
   }
 
   async execute(command: SpokenCommand, signal: AbortSignal): Promise<CommandOutcome> {
+    try {
+      return await this.#run(command, signal);
+    } catch (error: unknown) {
+      // Abandoning a step mid-flight is how barge-in works, and it surfaces as
+      // whatever the in-flight request threw: a cancelled OCR call, a cancelled
+      // decision. That is not a failure, and reporting it as one tells the
+      // speaker their command broke when in fact they replaced it.
+      if (signal.aborted) {
+        return this.#stop("cancelled", [], "the speaker moved on");
+      }
+      throw error;
+    }
+  }
+
+  async #run(command: SpokenCommand, signal: AbortSignal): Promise<CommandOutcome> {
     const history: string[] = [];
     let consecutiveNoops = 0;
 

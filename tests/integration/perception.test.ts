@@ -66,14 +66,21 @@ describe.skipIf(!built)("PerceptionPipeline (integration)", () => {
     const observation = await build().observe();
     const { origin, size } = observation.image;
 
-    // The capture spans the virtual desktop, so every item must fall inside it
-    // once the origin is accounted for. An item still in image space would sit
-    // outside these bounds on a machine whose origin is not zero.
+    // Every item must OVERLAP the captured desktop once the origin is taken
+    // into account. Overlap rather than containment: a maximised window puts
+    // its chrome slightly above the visible area, so an item can legitimately
+    // begin off-screen while still being visible and clickable.
+    //
+    // An item left in image coordinates would fail this on any machine whose
+    // virtual origin is not zero, which is the mistake being guarded against.
     for (const item of observation.items) {
-      expect(item.bounds.x).toBeGreaterThanOrEqual(origin.x - 1);
-      expect(item.bounds.y).toBeGreaterThanOrEqual(origin.y - 1);
-      expect(item.bounds.x).toBeLessThanOrEqual(origin.x + size.width + 1);
-      expect(item.bounds.y).toBeLessThanOrEqual(origin.y + size.height + 1);
+      const right = item.bounds.x + item.bounds.width;
+      const bottom = item.bounds.y + item.bounds.height;
+
+      expect(right).toBeGreaterThan(origin.x);
+      expect(bottom).toBeGreaterThan(origin.y);
+      expect(item.bounds.x).toBeLessThan(origin.x + size.width);
+      expect(item.bounds.y).toBeLessThan(origin.y + size.height);
     }
   });
 

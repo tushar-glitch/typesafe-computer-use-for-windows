@@ -1,6 +1,6 @@
 import type { IAppLauncher } from "../../src/core/ports/execution.js";
 import type { ForegroundWindow } from "../../src/core/types/observation.js";
-import type { CommandId, SpokenCommand } from "../../src/core/types/command.js";
+import { commandId, type SpokenCommand } from "../../src/core/types/command.js";
 import { confidence, milliseconds } from "../../src/core/types/scalars.js";
 
 /** Records what the fast path asked the operating system to do. */
@@ -15,25 +15,25 @@ export class FakeLauncher implements IAppLauncher {
   launchResult = true;
   openResult = true;
 
-  // eslint-disable-next-line @typescript-eslint/require-await
+   
   async launch(appId: string): Promise<boolean> {
     this.launched.push(appId);
     return this.launchResult;
   }
 
-  // eslint-disable-next-line @typescript-eslint/require-await
+   
   async openUrl(url: string): Promise<boolean> {
     this.opened.push(url);
     return this.openResult;
   }
 
-  // eslint-disable-next-line @typescript-eslint/require-await
+   
   async activate(processName: string): Promise<boolean> {
     this.activated.push(processName);
     return this.running.has(processName);
   }
 
-  // eslint-disable-next-line @typescript-eslint/require-await
+   
   async foreground(): Promise<ForegroundWindow> {
     return {
       processId: 1,
@@ -47,7 +47,7 @@ export class FakeLauncher implements IAppLauncher {
 /** A confirmed command, as the segmenter would emit one. */
 export function spoken(text: string): SpokenCommand {
   return {
-    id: "c1" as CommandId,
+    id: commandId("c1"),
     text,
     timing: "confirmed",
     confidence: confidence(0.9),

@@ -2,7 +2,22 @@
 
 import type { Confidence, Milliseconds } from "./scalars.js";
 
-export type CommandId = string & { readonly __command?: never };
+declare const commandBrand: unique symbol;
+
+/**
+ * Identity of one dispatched command.
+ *
+ * A real brand, not a cosmetic one. An earlier version declared this with an
+ * OPTIONAL marker property, which made it structurally identical to string and
+ * enforced nothing. Under that version the segmenter put a clause of spoken
+ * TEXT into the supersedes field while the queue matched it against an id, so
+ * barge-in silently never cancelled anything and the compiler was happy.
+ */
+export type CommandId = string & { readonly [commandBrand]: "CommandId" };
+
+export function commandId(value: string): CommandId {
+  return value as CommandId;
+}
 
 /**
  * How the command should be run relative to the speaker.

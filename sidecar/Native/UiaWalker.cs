@@ -328,7 +328,8 @@ internal static class UiaWalker
         }
     }
 
-    private static FocusedFieldDto? ReadFocusedField(IUIAutomation automation, ElementRegistry registry)
+    /// <summary>Exposed so the focused element can be read without walking the tree.</summary>
+    public static FocusedFieldDto? ReadFocusedField(IUIAutomation automation, ElementRegistry registry)
     {
         try
         {

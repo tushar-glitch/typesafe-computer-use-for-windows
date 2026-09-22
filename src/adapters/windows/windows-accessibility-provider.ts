@@ -16,8 +16,12 @@ import type {
   AccessibilityOptions,
   AccessibilitySnapshot,
   IAccessibilityProvider,
+  IFocusedFieldReader,
 } from "../../core/ports/perception.js";
-import { toAccessibilitySnapshot } from "./mapping.js";
+import type { FocusedField } from "../../core/types/observation.js";
+import { toAccessibilitySnapshot, toFocusedField } from "./mapping.js";
+
+const NO_PARAMS = {} as Readonly<Record<string, never>>;
 import type { UiaTreeParams } from "./protocol.js";
 import type { SidecarClient } from "./sidecar-client.js";
 
@@ -62,5 +66,29 @@ export class WindowsAccessibilityProvider implements IAccessibilityProvider {
     });
 
     return toAccessibilitySnapshot(tree);
+  }
+}
+
+/**
+ * `IFocusedFieldReader` over the same sidecar.
+ *
+ * Its own class rather than another method on the provider: a caller that only
+ * needs the caret should not have to know a tree walk exists, and the two have
+ * very different costs.
+ */
+export class WindowsFocusedFieldReader implements IFocusedFieldReader {
+  readonly #client: SidecarClient;
+
+  constructor(client: SidecarClient) {
+    this.#client = client;
+  }
+
+  async focusedField(signal?: AbortSignal): Promise<FocusedField | null> {
+    const result = await this.#client.request("focused_field", NO_PARAMS, {
+      timeoutMs: 3_000,
+      ...(signal === undefined ? {} : { signal }),
+    });
+
+    return result.field === null ? null : toFocusedField(result.field);
   }
 }

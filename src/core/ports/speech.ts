@@ -9,6 +9,28 @@
 import type { SpokenCommand } from "../types/command.js";
 import type { TranscriptUpdate } from "../types/transcript.js";
 
+/** The shape of the samples an audio source produces. */
+export interface AudioFormat {
+  readonly sampleRate: number;
+  readonly bitsPerSample: number;
+  readonly channels: number;
+  /** Signed little-endian PCM. The only encoding this system produces. */
+  readonly encoding: "linear16";
+}
+
+/**
+ * Raw audio, as it arrives.
+ *
+ * Separate from transcription so the two can vary independently: the
+ * microphone is a Windows concern, the recogniser is a vendor choice, and a
+ * recorded file can stand in for either while testing.
+ */
+export interface IAudioSource {
+  readonly format: AudioFormat;
+  /** Yields PCM chunks until the signal aborts or the device stops. */
+  frames(signal: AbortSignal): AsyncIterable<Uint8Array>;
+}
+
 export interface ITranscriptionEngine {
   readonly name: string;
   /**

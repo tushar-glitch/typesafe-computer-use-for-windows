@@ -10,7 +10,7 @@ export class FakeClock implements IClock {
     return milliseconds(this.#now);
   }
 
-  // eslint-disable-next-line @typescript-eslint/require-await
+   
   async sleep(duration: Milliseconds): Promise<void> {
     this.sleeps.push(duration);
     this.#now += duration;
